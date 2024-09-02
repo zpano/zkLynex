@@ -1,1 +1,0 @@
-*[[:space:]].sym filter=lfs diff=lfs merge=lfs -text
