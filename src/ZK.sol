@@ -1,28 +1,4 @@
-// pragma solidity ^0.8.13;
-library verify_contract{
-    struct OPI{
-        uint a0e;
-        uint a1m;
-        bytes32 salt;
-        bytes16 HOsF;
-        bytes16 HOsE;
-    }
-    function verifyProof(
-        uint[2] calldata _proofA, 
-        uint[2][2] calldata _proofB, 
-        uint[2] calldata _proofC,
-        OPI memory secretInput
-        )
-        external
-        view
-        returns(bool){
-            return true; //for test
-        }
-}
-
-
-
-// SPDX-License-Identifier: GPL-3.0
+SPDX-License-Identifier: GPL-3.0
 /*
     Copyright 2021 0KIMS association.
 
