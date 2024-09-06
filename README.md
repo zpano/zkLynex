@@ -6,6 +6,12 @@
 ### Core Objectives
 The primary goal of zkLynex is to provide users with a `secure`, `efficient`, and `privacy-protected` trading environment. Leveraging zk-SNARKs technology, zkLynex ensures that transaction details, including prices and volumes, remain private during the verification process.
 
+### Benifits of zkLynex
+
+1. Large-Scale Private Transaction
+2. Resistance to Front-running and MEV
+3. Optimized Trading Environment
+
 ### Key Features
 
 - **Concealing Price Information**: In limit orders, only the required balance for the order is exposed, while the price remains concealed.
@@ -187,6 +193,24 @@ $ forge test --via-ir
 ```
 
 ### Deploy
+
+In `script/Deploy.s.sol`, please replace the below parameters:
+1. `0x2b2E23ceC9921288f63F60A839E2B28235bc22ad`
+2. `agent`
+3. `0xe5D7C2a44FfDDf6b295A15c148167daaAf5Cf34f`
+
+```Solidity
+// SPDX-License-Identifier: UNLICENSED
+contract ZDPScript is Script {
+    function setUp() public {}
+
+    function run() public {
+        ...
+        ZDPc zdp = new ZDPc(0x2b2E23ceC9921288f63F60A839E2B28235bc22ad, payable(0x610D2f07b7EdC67565160F587F37636194C34E74), agent, 0xe5D7C2a44FfDDf6b295A15c148167daaAf5Cf34f);
+        ...
+    }
+}
+```
 
 ```shell
 $ forge script script/Deploy.s.sol --rpc-url <your_rpc_url> --private-key <your_private_key> --broadcast --via-ir -vv
