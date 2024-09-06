@@ -176,9 +176,34 @@ O:{
 
 - `O.s.salt`: random large number, used to prevent brute-force attacks (as attackers could easily try brute-forcing when O.s.a0e and O.s.a1m are small).
 
-## Foundry
+## Workflow
 
-## Usage
+### User Approves Amount to Delegate Contract:
+The user approves a large amount to the delegate contract (the user can decide the amount themselves, but it's recommended not to match the exact swap amount, so the approved amount and the actual swap amount a0e remain uncorrelated). The user constructs oBar using O (oBar.t == O.t, oBar.s == H(a0e, a1m, salt)).
+
+### User Sends Data to Agent:
+The user sends O.s to the agent and stores oBar in the delegate contract (to prevent oBar.t from being maliciously modified by the agent before the order is forwarded, as on-chain data cannot be altered). The delegate contract enforces that the initial value of oBar.t.f must be `false` and triggers an event, indicating that oBar has been received by the contract.
+
+### Agent Monitors Exchange Rate:
+The agent listens to the event on the contract, queries oBar.t.er and continuously fetches real-time exchange rates using a pricing function or script until the rate meets the user's expectations. Moreover, the agent pre-generates a proof using Circuit A (which takes time to generate).
+
+### Agent Executes Swap When Conditions Are Met:
+When the exchange rate is met, the agent calls the swapForward function on the contract (through flashBots to prevent frontrunning). The agent ensures:
+- The exchange rate matches the user’s expectations.
+- The shielded order has not been executed before.
+- The shielded order has not expired.
+- The proof is valid (H(a0e, a1m, salt) == oBar.s, preventing the agent from maliciously modifying O.s).
+
+### Agent Collects Gas Fees:
+Within the function, takeFeeInternal function is called to collect gas fees paid by the agent. The fees can be calculated using the average network gas fee or estimated with estimateGas from web3py/web3js.
+
+### Order Forwarding:
+Inside the function, swap is called to forward the order and complete the transaction.
+
+### Project Team Collects Gas Fees:
+Finally, the project team calls the profit function in the contract to collect gas fees paid on their behalf.
+
+## Foundry Usage
 
 ### Build
 
