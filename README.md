@@ -28,6 +28,148 @@ v: volume, the number of tokens to trade
 
 This structure ensures that price information is concealed and user intentions are protected, enabling a highly private and secure trading experience.
 
+## Modules
+
+### Circuit
+The provided code implements a circuit that computes the Keccak hash of the input data and outputs it as two 128-bit values. The main purpose of the circuit is to prove that the user knows the inputs `a0e`, `a1m`, and `salt`, and can compute their Keccak hash.
+
+```
+- Function: Proves the plaintext of `H(a0e, a1m, salt)`
+- Public Input: `a0e` (The amount of tokens being spent), `a1m` (The minimum acceptable amount of tokens to be received)
+- Private Input: `salt` (A private input used to add randomness and prevent brute-force attacks)
+- Output: `H(a0e, a1m, salt)`
+```
+
+1. `Num2Bits (Number to Bits Conversion):` The values a0e, a1m, and salt are converted into 256-bit binary numbers.
+2. `Reversing Bit Order`: The `reverse[]` array is used to reverse the bit order of `a0e`, `a1m`, and `salt`, typically to match the bit order used by certain hash algorithms like Keccak.
+3. `Byte-Level Bit Reordering`: The hash_input[] array swaps the bit order at the byte level, ensuring that the bit order within each byte is correct for the hash calculation.
+4. `Keccak Hashing`: The Keccak module computes the Keccak hash of the 768-bit data, producing a 256-bit hash output.
+5. `Splitting the Hash Value`: The hash value is split into two 128-bit parts as  `left[128]` and `right[128]`
+6. `Bits2Num (Bits to Number Conversion)`: The Bits2Num(128) module converts the high 128 bits and low 128 bits back into numbers.
+7. `Outputs`: The circuit outputs two 128-bit values, `out[0]` and `out[1]`, which are the Keccak hash of the inputs a0e, a1m, and salt.
+
+### Agent Script
+1. Continuously monitors pool information, match order information, and forward orders
+2. Call circuit to generate proof
+
+### Delegate Contract
+1. Stores the plaintext order information
+2. Forwards orders to the pool
+3. Validate inputs from the agent
+
+This function is the most critical part of the contract, responsible for order forwarding and verification. It uses zk-SNARKs (Groth16 proof) to ensure the correctness and privacy of the transaction.
+
+```Solidity
+function swapForward(uint[2] calldata _proofA, uint[2][2] calldata _proofB, uint[2] calldata _proofC, uint a0e, uint a1m, ...) external payable onlyAgent{
+
+    require(oBar.t.er <= a0e / a1m, "bad exchangeRate");//Ensure the exchange rate meets the user's expectations
+    require(!oBar.t.f, "already executed");//Ensure the order has not been executed.
+    require(block.timestamp >= O.t.ddl, "order expired");//Ensure the order has not expired.
+    //Perform zk verification to ensure the agent has not maliciously tampered with O.s.
+
+    uint256[4] memory signals;
+            signals[0] = uint256(uint128(oBar.HOsF));
+            signals[1] = uint256(uint128(oBar.HOsE));
+            signals[2] = a0e;
+            signals[3] = a1m;
+
+    require(
+            verifier.verifyProof(
+                _proofA, _proofB, _proofC, signals
+            ),
+            "Proof is not valid"
+        );
+
+    ...
+
+    orderbook[swapper][index].t.f = true;
+    takeFeeInternal(oBar.t.swapper, gasFee);
+    emit OrderExecuted(oBar.t.swapper, index, oBar.t.token0, oBar.t.token1, oBar.t.er, oBar.t.ddl, oBar.t.f);
+}
+
+function profit() external onlyOwner{
+     withdrawAllFee();
+}
+```
+
+The zk-SNARK proof is verified via Groth16Verifier, using `_proofA`, `_proofB`, `_proofC`, and `signals` to ensure that the off-chain computed hash (HOsF and HOsE) matches the on-chain data and prevents the agent from maliciously tampering with the order details.
+
+### Plaintext Order O
+O consists of t and s.
+
+### Shielded Order oBar
+oBar consists of t and H(s).
+
+### Purchase Order (i.e., details of the plaintext order O)
+Where t is a quintuple and s is a triplet:
+```shell
+t: (u, r, t0, t1, er, ddl, f)
+s: (a0e, a1m, salt)
+```
+
+<details>
+<summary>
+Explanation of t:
+</summary>
+
+  - `u`: The user address that wants to initiate the swap.
+  - `r`: The receiving address.
+  - `t0`: The contract address of the payment token (e.g., USDC contract address if exchanging with USDC)
+  - `t1`: The contract address of the receiving token (e.g., ETH contract address if receiving ETH)
+  - `er`: The exchange rate, i.e., a0e/a1m.
+  - `ddl`: The order expiration time. Orders that are not executed before this time will be discarded.
+  - `f`: Indicates whether the current order has been executed.
+</details>
+
+<details>
+<summary>
+Explanation of s:
+</summary>
+
+  - `a0e`: The amount of USDC the user is willing to spend.
+  - `a1m`: The minimum amount of ETH acceptable to the user.
+  - `salt`: A random value to prevent brute force attacks when a0e and a1m are small. Note that the first bit of salt must be 0 (to avoid errors in the circuit operation).
+</details>
+
+For instance, if Alice wants to swap 10,000 USDC for 10 ETH, the constructed order O should be:
+```JSON
+O:{
+    "t": {
+        "u": "swapper/sender",
+        "r": "receiver",
+        "t0": "0x176211869cA2b568f2A7D4EE941E073a821EE1ff",
+        "t1": "0xe5D7C2a44FfDDf6b295A15c148167daaAf5Cf34f",
+        "er": "1000",
+        "ddl": "12345678",
+        "f": "false",
+    },
+    "s": {
+        "a0e": "100000",
+        "a1m": "10",
+        "salt": "0x56b1a323c72b42888beb02627b6befb3f170bc7aa9eaa7bb563b0eb46ac1b939"
+    }
+}
+```
+- `O.t.u`: user, the person who wants to perform the token swap.
+
+- `O.t.r`: receiver, the address where the swapped ETH will be sent.
+
+- `O.t.t0`: `0x176211869cA2b568f2A7D4EE941E073a821EE1ff`, the contract address for USDC.
+
+- `O.t.t1`: `0xe5D7C2a44FfDDf6b295A15c148167daaAf5Cf34f`, the contract address for wETH.
+
+- `O.t.er`: 1000, the exchange rate, used by the off-chain script to determine when to forward the order.
+
+- `O.t.ddl`: timeStamp, the expiration time for the transaction. If the transaction hasn't been forwarded by the time the deadline (ddl) is reached, it will be discarded.
+
+- `O.t.f`: flag, indicates whether the transaction has been executed. **false** means it hasn’t been executed, `true` means it has been.
+
+- `O.s.a0e`: 100000, the amount of USDC Alice is willing to spent.
+
+- `O.s.a1m`: 10, the minimum acceptable amount of ETH to be received.
+
+- `O.s.salt`: random large number, used to prevent brute-force attacks (as attackers could easily try brute-forcing when O.s.a0e and O.s.a1m are small).
+
 ## Foundry
 
 ## Usage
