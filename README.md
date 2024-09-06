@@ -15,7 +15,7 @@
 ### Core Objectives
 The primary goal of zkLynex is to provide users with a `secure`, `efficient`, and `privacy-protected` trading environment. Leveraging zk-SNARKs technology, zkLynex ensures that transaction details, including prices and volumes, remain private during the verification process.
 
-### Benifits of zkLynex
+### Benefits of zkLynex
 
 1. Large-Scale Private Transaction
 2. Resistance to Front-running and MEV
