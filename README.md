@@ -34,6 +34,16 @@ v: volume, the number of tokens to trade
 
 This structure ensures that price information is concealed and user intentions are protected, enabling a highly private and secure trading experience.
 
+## Techstack
+
+### Smart Contract Development
+- `Foundry`: A smart contract development toolchain
+- `OpenZeppelin Contracts`: `ERC20`, `SafeERC20`, `Ownable`
+
+### Zero-Knowledge Proof (zk-SNARKs)
+- `Circom`: zkSnark circuit compiler
+- `SnarkJS`: zkSNARK implementation in JavaScript & WASM
+
 ## Modules
 
 ### Circuit
@@ -98,7 +108,7 @@ function profit() external onlyOwner{
 }
 ```
 
-The zk-SNARK proof is verified via Groth16Verifier, using `_proofA`, `_proofB`, `_proofC`, and `signals` to ensure that the off-chain computed hash (HOsF and HOsE) matches the on-chain data and prevents the agent from maliciously tampering with the order details.
+The zk-SNARK proof is verified via Groth16Verifier, using `_proofA`, `_proofB`, `_proofC`, and `signals` to ensure that the off-chain computed hash (`HOsF` and `HOsE`) matches the on-chain data and prevents the agent from maliciously tampering with the order details.
 
 ### Plaintext Order O
 O consists of t and s.
@@ -174,12 +184,12 @@ O:{
 
 - `O.s.a1m`: 10, the minimum acceptable amount of ETH to be received.
 
-- `O.s.salt`: random large number, used to prevent brute-force attacks (as attackers could easily try brute-forcing when O.s.a0e and O.s.a1m are small).
+- `O.s.salt`: random large number, used to prevent brute-force attacks (as attackers could easily try brute-forcing when `O.s.a0e` and `O.s.a1m` are small).
 
 ## Workflow
 
 ### User Approves Amount to Delegate Contract:
-The user approves a large amount to the delegate contract (the user can decide the amount themselves, but it's recommended not to match the exact swap amount, so the approved amount and the actual swap amount a0e remain uncorrelated). The user constructs oBar using O (oBar.t == O.t, oBar.s == H(a0e, a1m, salt)).
+The user approves a large amount to the delegate contract (the user can decide the amount themselves, but it's recommended not to match the exact swap amount, so the approved amount and the actual swap amount a0e remain uncorrelated). The user constructs `oBar` using `O (oBar.t == O.t, oBar.s == H(a0e, a1m, salt))`.
 
 ### User Sends Data to Agent:
 The user sends O.s to the agent and stores oBar in the delegate contract (to prevent oBar.t from being maliciously modified by the agent before the order is forwarded, as on-chain data cannot be altered). The delegate contract enforces that the initial value of oBar.t.f must be `false` and triggers an event, indicating that oBar has been received by the contract.
@@ -192,16 +202,50 @@ When the exchange rate is met, the agent calls the swapForward function on the c
 - The exchange rate matches the user’s expectations.
 - The shielded order has not been executed before.
 - The shielded order has not expired.
-- The proof is valid (H(a0e, a1m, salt) == oBar.s, preventing the agent from maliciously modifying O.s).
+- The proof is valid `(H(a0e, a1m, salt) == oBar.s`, preventing the agent from maliciously modifying O.s).
 
 ### Agent Collects Gas Fees:
-Within the function, takeFeeInternal function is called to collect gas fees paid by the agent. The fees can be calculated using the average network gas fee or estimated with estimateGas from web3py/web3js.
+Within the function, `takeFeeInternal` function is called to collect gas fees paid by the agent. The fees can be calculated using the average network gas fee or estimated with estimateGas from web3py/web3js.
 
 ### Order Forwarding:
 Inside the function, swap is called to forward the order and complete the transaction.
 
 ### Project Team Collects Gas Fees:
 Finally, the project team calls the profit function in the contract to collect gas fees paid on their behalf.
+
+## Circuit-related Procedure
+
+> In this section, we use the below path as an example
+
+`circuit/keccak-circuit/example1`
+
+### 1. Compile the Circuit
+
+The circuit has already been compiled, and the `.wasm` file is ready for use.
+
+### 2. Generate Witness
+
+Before generating the witness (e.g. `/example1/generate_witness.js`), the `input.json` needs to be constructed. You can generate the witness using the following command:
+
+```bash
+$ node generate_witness.js main.wasm input.json witness.wtns
+```
+
+### 3. Generate ZKP
+
+Since the trusted setup has already been completed, you can directly proceed to the proof generation step.
+
+### 4. Generate Proof
+
+Use the following command to generate the proof:
+
+```bash
+$ snarkjs groth16 prove main_0001.zkey witness.wtns proof.json public.json
+```
+
+### 5. Submit Proof
+
+The generated `proof.json` and `public.json` can then be submitted to the contract for verification.
 
 ## Foundry Usage
 
@@ -240,6 +284,10 @@ contract ZDPScript is Script {
 ```shell
 $ forge script script/Deploy.s.sol --rpc-url <your_rpc_url> --private-key <your_private_key> --broadcast --via-ir -vv
 ```
+
+#### The following address is used for the test deployment:
+
+https://holesky.etherscan.io/address/0x6369ee3cd9a905767efebcb2ce9e708698fef5c0
 
 ### Help
 
