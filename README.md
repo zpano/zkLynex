@@ -1,5 +1,14 @@
 # zkLynex
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Techstack](#techstack)
+- [Modules](#modules)
+- [Workflow](#workflow)
+- [Circuit-related Procedure](#circuit-related-procedure)
+- [Foundry Usage](#foundry-usage)
+
 ## Overview
 `zkLynex` is an innovative decentralized exchange (DEX) that leverages zk-SNARKs technology to address two critical issues in decentralized finance (DeFi): `privacy` and `scalability`. As a leading DEX on Linea, zkLynex introduces the concept of a `dark pool`, a trading environment where transaction details remain undisclosed to the public until after the trade is executed. This approach offers unparalleled security and privacy protection, especially for users executing large transactions.
 
