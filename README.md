@@ -264,18 +264,30 @@ The generated `proof.json` and `public.json` can then be submitted to the contra
 $ forge build --via-ir
 ```
 
+Result
+
+<img width="245" alt="forge_build" src="https://github.com/user-attachments/assets/752a622d-70e0-4ea1-9f0a-870d380f159d">
+
 ### Test
 
 ```shell
 $ forge test --via-ir
 ```
 
+Result
+
+<img width="689" alt="forge_test" src="https://github.com/user-attachments/assets/90b7cc83-7ec5-43ef-b904-b00d4369c0a3">
+
 ### Deploy
 
 In `script/Deploy.s.sol`, please replace the below parameters:
-1. `0x2b2E23ceC9921288f63F60A839E2B28235bc22ad`
-2. `agent`
-3. `0xe5D7C2a44FfDDf6b295A15c148167daaAf5Cf34f`
+1. **owner**: `0x2b2E23ceC9921288f63F60A839E2B28235bc22ad`
+2. **agent**: `agent`
+3. **weth**: `0xe5D7C2a44FfDDf6b295A15c148167daaAf5Cf34f`
+
+#### The following address is used for the test deployment:
+
+https://holesky.etherscan.io/address/0x6369ee3cd9a905767efebcb2ce9e708698fef5c0
 
 ```Solidity
 // SPDX-License-Identifier: UNLICENSED
@@ -293,10 +305,6 @@ contract ZDPScript is Script {
 ```shell
 $ forge script script/Deploy.s.sol --rpc-url <your_rpc_url> --private-key <your_private_key> --broadcast --via-ir -vv
 ```
-
-#### The following address is used for the test deployment:
-
-https://holesky.etherscan.io/address/0x6369ee3cd9a905767efebcb2ce9e708698fef5c0
 
 ### Help
 
