@@ -17,7 +17,7 @@ contract ZDPc is Ownable2Step {
         address receiver;
         address token0;
         address token1;
-        uint er;//@note 每1单位的目标token价值多少支出token   (a0e * 1 e decimals0) / (a1m * 1 e decimals1) 有18位小数 例如2e10 USDC 换 2e18 eth er = (2e10 * 1e18)/2e18 = 2e10 
+        uint er;//@note How much of the spent token is needed for each unit of the target token (a0e * 1e^decimals0) / (a1m * 1e^decimals1) has 18 decimal places. For example, 2e10 USDC for 2e18 ETH would result in: er = (2e10 * 1e18) / 2e18 = 2e10."
         uint ddl;
         bool f;
     }
@@ -202,8 +202,8 @@ contract ZDPc is Ownable2Step {
     }
 
     function takeFeeInternal(address swapper, uint gasFee) internal {
-        //@note 链下脚本获取该比交易的费用，使用参数传递收取多少gasFee --- web3py和web3js 都有 estimateGas api
-        require(gasFee <= 0.075 ether);//@note 要一个上限，防止脚本作恶
+        //@note The off-chain script retrieves the fee for this transaction, using parameters to pass how much gasFee is charged --- both web3py and web3js have the estimateGas API
+        require(gasFee <= 0.075 ether);//@note Set an upper limit to prevent the script from being malicious
         require(feeB[swapper] >= gasFee, "not enough fee to take");
         feeB[swapper] -= gasFee;
         feeB[owner()] += gasFee;
