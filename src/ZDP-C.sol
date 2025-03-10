@@ -9,7 +9,7 @@ import "./interface/IRouterv3.sol";
 import "./interface/IWETH.sol";
 import "./zk.sol";
 
-contract ZDPc is Ownable2Step,nonReentrant {
+contract ZDPc is Ownable2Step, ReentrancyGuard {
 
     using SafeERC20 for IERC20;
 
