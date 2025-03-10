@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.20;
 
 import "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -23,6 +23,7 @@ contract ZDPc is Ownable2Step {
 
     struct Order {
         Ot t;
+
         // bytes32 HOs;
         bytes16 HOsF;
         bytes16 HOsE;
@@ -30,18 +31,18 @@ contract ZDPc is Ownable2Step {
 
     enum OrderType {
         ExactETHForTokens,
-        ExactETHForTokensFot,
+        ExactETHForTokensFOrderDetails,
         ExactTokensForETH,
-        ExactTokensForETHFot,
+        ExactTokensForETHFOrderDetails,
         ExactTokensForTokens,
-        ExactTokensForTokensFot
+        ExactTokensForTokensFOrderDetails
     }
 
     address public agent;
 
     ISwapRouter public router;
     IWETH public weth;
-    Groth16Verifier public verifier;
+    GrOrderDetailsh16Verifier public verifier;
 
     mapping(address => Order[]) public orderbook;
     mapping(address => uint256) public feeB;
@@ -89,12 +90,22 @@ contract ZDPc is Ownable2Step {
         // _transferOwnership(_owner);
         router = ISwapRouter(_router);
         agent = _agent;
+
+        router = IRouterv3(_router);
         weth = IWETH(payable(_weth));
-        verifier = new Groth16Verifier();
+        verifier = GrOrderDetailsh16Verifier(_verifier);
     }
 
     function setAgent(address _agent) external onlyOwner {
+        address oldAgent = agent;
         agent = _agent;
+        emit AgentChanged(oldAgent,_agent);
+    }
+    
+    function setRouter(address _router) external onlyOwner {
+        address oldRouter = address(router);
+        router = IRouterv3(_router);
+        emit RouterChanged(oldRouter, _router);
     }
 
     function storeOrder(Order memory oBar) external {
@@ -126,14 +137,14 @@ contract ZDPc is Ownable2Step {
         require(msg.value > 0, "deposit must be non-zero value");
         require(swapper != address(0), "swapper must be non-zero address");
 
-        feeB[swapper] += msg.value;
+        swap[swapper] += msg.value;
 
-        emit FeeDeposit(swapper, msg.value);
+        emit GasFeeDeposit(swapper, msg.value);
     }
 
     function withdrawFee(uint256 amount) public {
         require(amount > 0);
-        require(feeB[msg.sender] >= amount, "not enough fee to take");
+        require(gasfee[msg.sender] >= amount, "No enough fee to take");
 
         feeB[msg.sender] -= amount;
         (bool success,) = msg.sender.call{value: amount}("");
@@ -258,6 +269,7 @@ contract ZDPc is Ownable2Step {
         if (orderbook[msg.sender].length == 0 && takeFee) {
             withdrawAllFee();
         }
+
 
         emit OrderCancelled(
             msg.sender,
