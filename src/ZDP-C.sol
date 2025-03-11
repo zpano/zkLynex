@@ -98,6 +98,8 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
 
     function addPendingOrder(Order memory _order) external {
         //@todo check order
+        checkOrder(_order);
+        require(!_order.t.OrderIsExecuted, "cannot be executed");
         uint index = orderbook[_order.t.swapper].length;
         orderbook[_order.t.swapper].push(_order);
 
@@ -133,40 +135,41 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
 
         emit TakenFeeWithdrawn(owner(), amount);
     }
-
+    
     function swapForward(
         uint256[2] calldata _proofA,
         uint256[2][2] calldata _proofB,
         uint256[2] calldata _proofC,
         address swapper,
+        uint256 index,
         uint256 a0e,
         uint256 a1m,
-        uint256 index,
         uint256 _gasFee,
         OrderType _type
     ) external payable onlyAgent {
-        Order memory oBar = orderbook[swapper][index];
-        address recipient = oBar.t.recipient;
-        address tokenIn = oBar.t.tokenIn;
-        address tokenOut = oBar.t.tokenOut;
+        Order memory pendingOrder = orderbook[swapper][index];
+        address recipient = pendingOrder.t.recipient;
+        address tokenIn = pendingOrder.t.tokenIn;
+        address tokenOut = pendingOrder.t.tokenOut;
+
         //      require(path.length > 0);
-        //      require(oBar.t.tokenIn == path[0].from, "tokenIn mismatch");
-        //      require(oBar.t.tokenOut == path[path.length - 1].to, "tokenOut mismatch");
-        require(oBar.t.exchangeRate <= (a0e * 1 ether) / (a1m), "bad exchangeRate");
-        require(!oBar.t.OrderIsExecuted, "already executed");
-        require(block.timestamp <= oBar.t.deadline, "order expired");
+        //      require(pendingOrder.t.tokenIn == path[0].from, "tokenIn mismatch");
+        //      require(pendingOrder.t.tokenOut == path[path.length - 1].to, "tokenOut mismatch");
+        require(pendingOrder.t.exchangeRate <= (a0e * 1 ether) / (a1m), "bad exchangeRate");
+        require(!pendingOrder.t.OrderIsExecuted, "already executed");
+        require(block.timestamp <= pendingOrder.t.deadline, "order expired");
 
         uint256[4] memory signals;
-        signals[0] = uint256(uint128(oBar.HOsF));
-        signals[1] = uint256(uint128(oBar.HOsE));
+        signals[0] = uint256(uint128(pendingOrder.HOsF));
+        signals[1] = uint256(uint128(pendingOrder.HOsE));
         signals[2] = a0e;
         signals[3] = a1m;
 
         require(verifier.verifyProof(_proofA, _proofB, _proofC, signals), "Proof is not valid");
 
         if (tokenIn == address(0)) {
-            require(gasfee[oBar.t.swapper] >= _gasFee + a0e, "insufficient fee balance");
-            gasfee[oBar.t.swapper] -= a0e;
+            require(gasfee[pendingOrder.t.swapper] >= _gasFee + a0e, "insufficient fee balance");
+            gasfee[pendingOrder.t.swapper] -= a0e;
             weth.deposit{value: a0e}();
             weth.approve(address(router), a0e);
             tokenIn = address(weth);
@@ -185,7 +188,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
                 tokenOut: tokenOut,
                 fee: 3000,
                 recipient: recipient,
-                deadline: oBar.t.deadline,
+                deadline: pendingOrder.t.deadline,
                 amountIn: a0e,
                 amountOutMinimum: a1m,
                 sqrtPriceLimitX96: 0
@@ -197,7 +200,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
                 tokenOut: tokenOut, // tokenOut should be address(weth) after conversion if originally ETH
                 fee: 3000,
                 recipient: recipient,
-                deadline: oBar.t.deadline,
+                deadline: pendingOrder.t.deadline,
                 amountIn: a0e,
                 amountOutMinimum: a1m,
                 sqrtPriceLimitX96: 0
@@ -207,7 +210,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
             ISwapRouter.ExactInputParams memory params = ISwapRouter.ExactInputParams({
                 path: abi.encodePacked(tokenIn, uint24(3000), tokenOut),
                 recipient: recipient,
-                deadline: oBar.t.deadline,
+                deadline: pendingOrder.t.deadline,
                 amountIn: a0e,
                 amountOutMinimum: a1m
             });
@@ -215,9 +218,9 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         }
 
         orderbook[swapper][index].t.OrderIsExecuted = true;
-        takeFeeInternal(oBar.t.swapper, _gasFee);
+        takeFeeInternal(pendingOrder.t.swapper, _gasFee);
         emit OrderExecuted(
-            oBar.t.swapper, index, oBar.t.tokenIn, oBar.t.tokenOut, oBar.t.exchangeRate, oBar.t.deadline, oBar.t.OrderIsExecuted
+            pendingOrder.t.swapper, index, pendingOrder.t.tokenIn, pendingOrder.t.tokenOut, pendingOrder.t.exchangeRate, pendingOrder.t.deadline, pendingOrder.t.OrderIsExecuted
         );
     }
 
@@ -250,9 +253,8 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         emit OrderCancelled(msg.sender, index, tempOrder.t.tokenIn, tempOrder.t.tokenOut, tempOrder.t.exchangeRate, tempOrder.t.deadline, tempOrder.t.OrderIsExecuted);
     }
 
-    function checkOrderAvailability(Order memory _order) external view returns(bool){
-        require(!_order.t.OrderIsExecuted, "already executed");
-        require(block.timestamp <= _order.t.deadline, "order expired");
+    function checkOrder(Order memory _order) internal view returns(bool){
+        require(block.timestamp < _order.t.deadline, "order expired");
         require(_order.t.tokenIn != _order.t.tokenOut, "tokenIn == tokenOut");
         require(_order.t.recipient != address(0), "recipient must be non-zero address");
         require(_order.t.exchangeRate != 0, "exchangeRate must be non-zero value");
