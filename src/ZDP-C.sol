@@ -4,8 +4,8 @@ pragma solidity ^0.8.20;
 import "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import "openzeppelin-contracts/contracts/access/Ownable2Step.sol";
-import "openzeppelin-contracts/contracts/security/ReentrancyGuard.sol";
-import "./interface/IRouterv3.sol";
+import "openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
+import "./interface/ISwapRouter.sol";
 import "./interface/IWETH.sol";
 import "./zk.sol";
 
@@ -32,20 +32,21 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
 
     enum OrderType {
         ExactETHForTokens,
-        ExactETHForTokensFOrderDetails,
+        ExactETHForTokensFot,
         ExactTokensForETH,
-        ExactTokensForETHFOrderDetails,
+        ExactTokensForETHFot,
         ExactTokensForTokens,
-        ExactTokensForTokensFOrderDetails
+        ExactTokensForTokensFot
+
     }
 
     address public agent;
 
-    IRouterv3 public router;
+    ISwapRouter public router;
     IWETH public weth;
-    GrOrderDetailsh16Verifier public verifier;
+    Groth16Verifier public verifier;
 
-    mapping(address => Order[]) public orderBook;
+    mapping(address => Order[]) public orderbook;
     mapping(address => uint) public gasfee;
 
     modifier onlyAgent {
@@ -65,15 +66,15 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
     event TakenFeeWithdrawn(address indexed owner, uint indexed fee);
     
 
-    constructor(address _agent, address payable _router, address _weth, address _verifier, address _owner,  ) Ownable(_owner){
+    constructor(address _agent, address payable _router, address _weth, address _verifier, address _owner) Ownable(_owner){
         require(_agent != address(0));
         require(_router != address(0));
-        require(_verfiier != address(0));
+        require(_verifier != address(0));
         agent = _agent;
 
-        router = IRouterv3(_router);
+        router = ISwapRouter(_router);
         weth = IWETH(payable(_weth));
-        verifier = GrOrderDetailsh16Verifier(_verifier);
+        verifier = Groth16Verifier(_verifier);
     }
 
     function setAgent(address _agent) external onlyOwner {
@@ -84,22 +85,20 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
     
     function setRouter(address _router) external onlyOwner {
         address oldRouter = address(router);
-        router = IRouterv3(_router);
+        router = ISwapRouter(_router);
         emit RouterChanged(oldRouter, _router);
     }
 
     function setVerifier(address _verifier) external onlyOwner {
         address oldVerifier = address(verifier);
-        verifier = GrOrderDetailsh16Verifier(_verifier);
+        verifier = Groth16Verifier(_verifier);
         emit VerifierChanged(oldVerifier, _verifier);
     }
 
 
     function addPendingOrder(Order memory _order) external {
-        
-
-        uint index;
-        index = orderbook[_order.t.swapper].length;
+        //@todo check order
+        uint index = orderbook[_order.t.swapper].length;
         orderbook[_order.t.swapper].push(_order);
 
         emit OrderStored(msg.sender, index, _order.t.tokenIn, _order.t.tokenOut, _order.t.exchangeRate, _order.t.deadline, _order.t.OrderIsExecuted);
@@ -109,9 +108,9 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         require(msg.value > 0, "deposit must be non-zero value");
         require(swapper != address(0), "swapper must be non-zero address");
 
-        swap[swapper] += msg.value;
+        gasfee[swapper] += msg.value;
 
-        emit GasFeeDeposit(swapper, msg.value);
+        emit FeeDeposit(swapper, msg.value);
     }
 
     function withdrawGasFee(uint amount) public nonReentrant {
@@ -136,81 +135,90 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
     }
 
     function swapForward(
-        uint[2] calldata _proofA, 
-        uint[2][2] calldata _proofB, 
-        uint[2] calldata _proofC, 
+        uint256[2] calldata _proofA,
+        uint256[2][2] calldata _proofB,
+        uint256[2] calldata _proofC,
         address swapper,
-        RouterV2.route[] memory path,
-        uint a0e, 
-        uint a1m, 
-        uint index,
-        uint gasFee,
-        OrderType _type)
-        external payable nonReentrant onlyAgent{
+        uint256 a0e,
+        uint256 a1m,
+        uint256 index,
+        uint256 _gasFee,
+        OrderType _type
+    ) external payable onlyAgent {
+        Order memory oBar = orderbook[swapper][index];
+        address recipient = oBar.t.recipient;
+        address tokenIn = oBar.t.tokenIn;
+        address tokenOut = oBar.t.tokenOut;
+        //      require(path.length > 0);
+        //      require(oBar.t.tokenIn == path[0].from, "tokenIn mismatch");
+        //      require(oBar.t.tokenOut == path[path.length - 1].to, "tokenOut mismatch");
+        require(oBar.t.exchangeRate <= (a0e * 1 ether) / (a1m), "bad exchangeRate");
+        require(!oBar.t.OrderIsExecuted, "already executed");
+        require(block.timestamp <= oBar.t.deadline, "order expired");
 
-            Order memory _order = orderbook[swapper][index];
-            address recipient = _order.t.recipient;
+        uint256[4] memory signals;
+        signals[0] = uint256(uint128(oBar.HOsF));
+        signals[1] = uint256(uint128(oBar.HOsE));
+        signals[2] = a0e;
+        signals[3] = a1m;
 
-            require(path.length > 0);
-            require(_order.t.tokenIn == path[0].from , "tokenIn mismatch");
-            require(_order.t.tokenOut == path[path.length - 1].to , "tokenOut mismatch");
-            require(_order.t.exchangeRate <= (a0e * 1 ether) / (a1m), "bad exchangeRate");
-            require(!_order.t.OrderIsExecuted, "already executed");
-            require(block.timestamp <= _order.t.deadline, "order expired");
+        require(verifier.verifyProof(_proofA, _proofB, _proofC, signals), "Proof is not valid");
 
-            uint256[4] memory signals;
-            signals[0] = uint256(uint128(_order.HOsF));
-            signals[1] = uint256(uint128(_order.HOsE));
-            signals[2] = a0e;
-            signals[3] = a1m;
+        if (tokenIn == address(0)) {
+            require(gasfee[oBar.t.swapper] >= _gasFee + a0e, "insufficient fee balance");
+            gasfee[oBar.t.swapper] -= a0e;
+            weth.deposit{value: a0e}();
+            weth.approve(address(router), a0e);
+            tokenIn = address(weth);
+        } else {
+            IERC20(tokenIn).safeTransferFrom(swapper, address(this), a0e);
+            IERC20(tokenIn).approve(address(router), a0e);
+        }
 
-            require(
-                    verifier.verifyProof(
-                        _proofA, _proofB, _proofC, signals
-                    ),
-                    "Proof is nOrderDetails valid"
-                );
-            
+        if (tokenOut == address(0)) {
+            tokenOut = address(weth);
+        }
 
-            if(_order.t.tokenIn == address(0)) {
-                require(gasfee[_order.t.swapper] >= gasFee + a0e);
-                gasfee[_order.t.swapper] -= a0e;
+        if (_type == OrderType.ExactETHForTokens || _type == OrderType.ExactETHForTokensFot) {
+            ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+                tokenIn: tokenIn, // should be address(weth) after conversion
+                tokenOut: tokenOut,
+                fee: 3000,
+                recipient: recipient,
+                deadline: oBar.t.deadline,
+                amountIn: a0e,
+                amountOutMinimum: a1m,
+                sqrtPriceLimitX96: 0
+            });
+            router.exactInputSingle{value: a0e}(params);
+        } else if (_type == OrderType.ExactTokensForETH || _type == OrderType.ExactTokensForETHFot) {
+            ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+                tokenIn: tokenIn,
+                tokenOut: tokenOut, // tokenOut should be address(weth) after conversion if originally ETH
+                fee: 3000,
+                recipient: recipient,
+                deadline: oBar.t.deadline,
+                amountIn: a0e,
+                amountOutMinimum: a1m,
+                sqrtPriceLimitX96: 0
+            });
+            router.exactInputSingle(params);
+        } else if (_type == OrderType.ExactTokensForTokens || _type == OrderType.ExactTokensForTokensFot) {
+            ISwapRouter.ExactInputParams memory params = ISwapRouter.ExactInputParams({
+                path: abi.encodePacked(tokenIn, uint24(3000), tokenOut),
+                recipient: recipient,
+                deadline: oBar.t.deadline,
+                amountIn: a0e,
+                amountOutMinimum: a1m
+            });
+            router.exactInput(params);
+        }
 
-                weth.deposit{value:a0e}();
-                weth.approve(address(router), a0e);
-
-                path[0].from = address(weth);
-            }else{
-                IERC20(path[0].from).safeTransferFrom(swapper, address(this), a0e);
-                IERC20(path[0].from).approve(address(router), a0e);
-            }
-
-            if(_order.t.tokenOut == address(0)) {
-                path[0].to = address(weth);
-            }
-
-            if(_type == OrderType.ExactETHForTokens){
-                router.swapExactETHForTokens{value : a0e}(a1m, path, recipient, _order.t.deadline);
-            } else if(_type == OrderType.ExactTokensForETH){
-                router.swapExactTokensForETH(a0e, a1m, path, recipient, _order.t.deadline);
-            }
-
-            if(_type == OrderType.ExactETHForTokensFOrderDetails){
-                router.swapExactETHForTokensSupportingFeeOnTransferTokens{value : a0e}(a1m, path, recipient, _order.t.deadline);
-            } else if(_type == OrderType.ExactTokensForETHFOrderDetails){
-                router.swapExactTokensForETHSupportingFeeOnTransferTokens(a0e, a1m, path, recipient, _order.t.deadline);
-            }
-
-            if(_type == OrderType.ExactTokensForTokens){
-                router.swapExactTokensForTokens(a0e, a1m, path, recipient, _order.t.deadline);
-            } else if(_type == OrderType.ExactTokensForTokensFOrderDetails){
-                router.swapExactTokensForTokensSupportingFeeOnTransferTokens(a0e, a1m, path, recipient, _order.t.deadline);
-            }
-
-
-            orderbook[swapper][index].t.OrderIsExecuted = true;
-            takeFeeInternal(_order.t.swapper, gasFee);
-            emit OrderExecuted(_order.t.swapper, index, _order.t.tokenIn, _order.t.tokenOut, _order.t.exchangeRate, _order.t.deadline, _order.t.OrderIsExecuted);
+        orderbook[swapper][index].t.OrderIsExecuted = true;
+        takeFeeInternal(oBar.t.swapper, _gasFee);
+        emit OrderExecuted(
+            oBar.t.swapper, index, oBar.t.tokenIn, oBar.t.tokenOut, oBar.t.exchangeRate, oBar.t.deadline, oBar.t.OrderIsExecuted
+        );
     }
 
     function takeFeeInternal(address swapper, uint gasFeeAmount) internal {
@@ -220,11 +228,11 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         gasfee[swapper] -= gasFeeAmount;
         gasfee[owner()] += gasFeeAmount;
 
-        emit FeeTaken(swapper, gasFee);
+        emit FeeTaken(swapper, gasFeeAmount);
     }
 
 
-    function cancelOrder(uint index, bool takeFee) external {
+    function cancelOrder(uint index) external {
         require(!orderbook[msg.sender][index].t.OrderIsExecuted, "already executed");
         require(orderbook[msg.sender][index].t.recipient != address(0), "recipient does not exist");
 
@@ -234,21 +242,22 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         orderbook[msg.sender][len - 1] = orderbook[msg.sender][index];
         orderbook[msg.sender][index] = tempOrder;
         orderbook[msg.sender].pop();
-
-        if(orderbook[msg.sender].length == 0 && takeFee){
-            withdrawAllFee();
-        }
+        //@todo need auto withdraw fee?
+        // if(orderbook[msg.sender].length == 0 && takeFee){
+        //     withdrawAllFee();
+        // }
 
         emit OrderCancelled(msg.sender, index, tempOrder.t.tokenIn, tempOrder.t.tokenOut, tempOrder.t.exchangeRate, tempOrder.t.deadline, tempOrder.t.OrderIsExecuted);
     }
 
-    function checkOrderAvailability(Order _order) external view returns(bool){
+    function checkOrderAvailability(Order memory _order) external view returns(bool){
         require(!_order.t.OrderIsExecuted, "already executed");
         require(block.timestamp <= _order.t.deadline, "order expired");
         require(_order.t.tokenIn != _order.t.tokenOut, "tokenIn == tokenOut");
         require(_order.t.recipient != address(0), "recipient must be non-zero address");
         require(_order.t.exchangeRate != 0, "exchangeRate must be non-zero value");
         require(_order.t.swapper == msg.sender, "only swapper can store order");
+        return true;
     }
 
 }
