@@ -32,7 +32,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
     }
     enum OrderType {
         ExactInput,
-        ExactOnput
+        ExactOutput
     }
 
     address public agent;
