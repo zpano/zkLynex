@@ -13,7 +13,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
 
     using SafeERC20 for IERC20;
 
-    struct OrderDetails{
+    struct OrderDetails {
         address swapper;
         address recipient;
         address tokenIn;
@@ -21,23 +21,18 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         uint exchangeRate;
         uint deadline;
         bool OrderIsExecuted;
+        bool isMultiPath;     // Flag to indicate if this is a multi-path order
+        bytes encodedPath;    // Encoded path for multi-hop swaps
     }
 
-    struct Order{
+    struct Order {
         OrderDetails t;
-        // bytes32 HOs;
         bytes16 HOsF;
         bytes16 HOsE;
     }
-
     enum OrderType {
-        ExactETHForTokens,
-        ExactETHForTokensFot,
-        ExactTokensForETH,
-        ExactTokensForETHFot,
-        ExactTokensForTokens,
-        ExactTokensForTokensFot
-
+        ExactInput,
+        ExactOnput
     }
 
     address public agent;
