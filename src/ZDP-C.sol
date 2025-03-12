@@ -301,10 +301,12 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         require(_order.t.swapper == msg.sender, "only swapper can store order");
         if (_order.t.isMultiPath) {
             require(Path.hasMultiplePools(_order.t.encodedPath), "encodedPath must be non-zero length");
-            require(Path.decodeFirstPool(_order.t.encodedPath) == _order.t.tokenIn, "first pool must be tokenIn");
+            (address _tokenIn,,) = Path.decodeFirstPool(_order.t.encodedPath);
+            require(_tokenIn == _order.t.tokenIn, "first pool must be tokenIn");
         } else {
             require(_order.t.encodedPath.length == 0, "encodedPath must be zero length");
             require(_order.t.tokenIn != _order.t.tokenOut, "tokenIn and tokenOut cannot be the same");
         }
         return true;
     }
+}

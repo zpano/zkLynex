@@ -1,1 +1,1 @@
-forge test --via-ir
+forge test
