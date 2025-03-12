@@ -151,7 +151,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         emit FeeWithdrawn(msg.sender, amount);
     }
 
-    function withdrawTakenFee() external onlyOwner {
+    function withdrawTakenFee() external onlyOwner nonReentrant {
         uint256 amount = gasfee[owner()];
 
         gasfee[owner()] = 0;
@@ -294,17 +294,17 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         );
     }
 
-    function checkOrder(Order memory _order) internal view returns (bool) {
+    function checkOrder(Order memory _order) internal view returns(bool){
         require(block.timestamp < _order.t.deadline, "order expired");
-        require(_order.t.tokenIn != _order.t.tokenOut, "tokenIn == tokenOut");
         require(_order.t.recipient != address(0), "recipient must be non-zero address");
         require(_order.t.exchangeRate != 0, "exchangeRate must be non-zero value");
         require(_order.t.swapper == msg.sender, "only swapper can store order");
         if (_order.t.isMultiPath) {
             require(Path.hasMultiplePools(_order.t.encodedPath), "encodedPath must be non-zero length");
+            require(Path.decodeFirstPool(_order.t.encodedPath) == _order.t.tokenIn, "first pool must be tokenIn");
         } else {
             require(_order.t.encodedPath.length == 0, "encodedPath must be zero length");
+            require(_order.t.tokenIn != _order.t.tokenOut, "tokenIn and tokenOut cannot be the same");
         }
         return true;
     }
-}
