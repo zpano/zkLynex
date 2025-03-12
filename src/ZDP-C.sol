@@ -8,6 +8,7 @@ import "openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
 import "./interface/ISwapRouter.sol";
 import "./interface/IWETH.sol";
 import "./zk.sol";
+import "./lib/Path.sol";
 
 contract ZDPc is Ownable2Step, ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -33,7 +34,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         ExactInput,
         ExactOutput
     }
-
+    uint24 constant FEE = 3000;
     address public agent;
     ISwapRouter public router;
     Groth16Verifier public verifier;
@@ -85,7 +86,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
     event TakenFeeWithdrawn(address indexed owner, uint256 indexed fee);
 
 
-    constructor(address _agent, address payable _router, address _weth, address _verifier, address _owner) Ownable(_owner){
+    constructor(address _agent, address payable _router, address _verifier, address _owner) Ownable(_owner){
         require(_agent != address(0));
         require(_router != address(0));
         require(_verifier != address(0));
@@ -170,8 +171,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         uint256 a0e,
         uint256 a1m,
         uint256 _gasFee,
-        OrderType _type,
-        bytes calldata pendingOrder.t.encodedPath
+        OrderType _type
     ) external onlyAgent {
         Order memory pendingOrder = orderbook[swapper][index];
         address recipient = pendingOrder.t.recipient;
@@ -205,7 +205,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
                 ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
                     tokenIn: tokenIn,
                     tokenOut: tokenOut,
-                    fee: 3000,
+                    fee: FEE,
                     recipient: recipient,
                     deadline: pendingOrder.t.deadline,
                     amountIn: a0e,
@@ -228,7 +228,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
                 ISwapRouter.ExactOutputSingleParams memory params = ISwapRouter.ExactOutputSingleParams({
                     tokenIn: tokenIn,
                     tokenOut: tokenOut,
-                    fee: 3000,
+                    fee: FEE,
                     recipient: recipient,
                     deadline: pendingOrder.t.deadline,
                     amountOut: a1m,
@@ -292,7 +292,11 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         require(_order.t.recipient != address(0), "recipient must be non-zero address");
         require(_order.t.exchangeRate != 0, "exchangeRate must be non-zero value");
         require(_order.t.swapper == msg.sender, "only swapper can store order");
-        //@todo check path
+        if (_order.t.isMultiPath) {
+            require(Path.hasMultiplePools(_order.t.encodedPath), "encodedPath must be non-zero length");
+        } else {
+            require(_order.t.encodedPath.length == 0, "encodedPath must be zero length");
+        }
         return true;
     }
 }
