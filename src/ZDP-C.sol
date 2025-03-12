@@ -6,9 +6,9 @@ import "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import "openzeppelin-contracts/contracts/access/Ownable2Step.sol";
 import "openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
 import "./interface/ISwapRouter.sol";
-import "./interface/IWETH.sol";
 import "./zk.sol";
 import "./lib/Path.sol";
+import "./lib/TransferHelper.sol";
 
 contract ZDPc is Ownable2Step, ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -30,19 +30,19 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         bytes16 HOsF;
         bytes16 HOsE;
     }
+
     enum OrderType {
         ExactInput,
         ExactOutput
     }
+
     uint24 constant FEE = 3000;
     address public agent;
     ISwapRouter public router;
     Groth16Verifier public verifier;
 
-
     mapping(address => Order[]) public orderbook;
     mapping(address => uint256) public gasfee;
-
 
     modifier onlyAgent() {
         require(msg.sender == agent, "only agent can call this function");
@@ -85,8 +85,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
     event FeeTaken(address indexed swapper, uint256 indexed fee);
     event TakenFeeWithdrawn(address indexed owner, uint256 indexed fee);
 
-
-    constructor(address _agent, address payable _router, address _verifier, address _owner) Ownable(_owner){
+    constructor(address _agent, address payable _router, address _verifier, address _owner) Ownable(_owner) {
         require(_agent != address(0));
         require(_router != address(0));
         require(_verifier != address(0));
@@ -161,7 +160,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
 
         emit TakenFeeWithdrawn(owner(), amount);
     }
-    
+
     function swapForward(
         uint256[2] calldata _proofA,
         uint256[2][2] calldata _proofB,
@@ -187,9 +186,14 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         signals[1] = uint256(uint128(pendingOrder.HOsE));
         signals[2] = a0e;
         signals[3] = a1m;
-        //@todo transferfrom tokenIn
 
         require(verifier.verifyProof(_proofA, _proofB, _proofC, signals), "Proof is not valid");
+
+        // Transfer `amountIn` of tokenIn to this contract.
+        TransferHelper.safeTransferFrom(tokenIn, msg.sender, address(this), a0e);
+
+        // Approve the router to spend tokenIn.
+        TransferHelper.safeApprove(tokenIn, address(router), a0e);
 
         if (_type == OrderType.ExactInput) {
             if (pendingOrder.t.isMultiPath) {
@@ -215,6 +219,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
                 router.exactInputSingle(params);
             }
         } else if (_type == OrderType.ExactOutput) {
+            uint256 amountIn;
             if (pendingOrder.t.isMultiPath) {
                 ISwapRouter.ExactOutputParams memory params = ISwapRouter.ExactOutputParams({
                     path: pendingOrder.t.encodedPath,
@@ -223,7 +228,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
                     amountOut: a1m,
                     amountInMaximum: a0e
                 });
-                router.exactOutput(params);
+                amountIn = router.exactOutput(params);
             } else {
                 ISwapRouter.ExactOutputSingleParams memory params = ISwapRouter.ExactOutputSingleParams({
                     tokenIn: tokenIn,
@@ -235,7 +240,12 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
                     amountInMaximum: a0e,
                     sqrtPriceLimitX96: 0
                 });
-                router.exactOutputSingle(params);
+                amountIn = router.exactOutputSingle(params);
+            }
+            // If the swap did not require the full amountInMaximum to achieve the exact amountOut then we refund msg.sender and approve the router to spend 0.
+            if (amountIn < a0e) {
+                TransferHelper.safeApprove(tokenIn, address(router), 0);
+                TransferHelper.safeTransfer(tokenIn, msg.sender, a0e - amountIn);
             }
         }
 
@@ -262,7 +272,6 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         emit FeeTaken(swapper, gasFeeAmount);
     }
 
-
     function cancelOrder(uint256 index) external {
         require(!orderbook[msg.sender][index].t.OrderIsExecuted, "already executed");
         require(orderbook[msg.sender][index].t.recipient != address(0), "recipient does not exist");
@@ -273,7 +282,6 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         orderbook[msg.sender][len - 1] = orderbook[msg.sender][index];
         orderbook[msg.sender][index] = tempOrder;
         orderbook[msg.sender].pop();
-
 
         emit OrderCancelled(
             msg.sender,
@@ -286,7 +294,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         );
     }
 
-    function checkOrder(Order memory _order) internal view returns(bool){
+    function checkOrder(Order memory _order) internal view returns (bool) {
         require(block.timestamp < _order.t.deadline, "order expired");
         require(_order.t.tokenIn != _order.t.tokenOut, "tokenIn == tokenOut");
         require(_order.t.recipient != address(0), "recipient must be non-zero address");
