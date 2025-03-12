@@ -20,7 +20,6 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         uint256 exchangeRate;
         uint256 deadline;
         bool OrderIsExecuted;
-
         bool isMultiPath; // Flag to indicate if this is a multi-path order
         bytes encodedPath; // Encoded path for multi-hop swaps
     }
@@ -37,15 +36,12 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
 
     address public agent;
     ISwapRouter public router;
+    IWETH public weth;
     Groth16Verifier public verifier;
 
 
     mapping(address => Order[]) public orderbook;
     mapping(address => uint256) public gasfee;
-
-    ISwapRouter public router;
-    IWETH public weth;
-    Groth16Verifier public verifier;
 
 
     modifier onlyAgent() {
@@ -201,7 +197,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         if (_type == OrderType.ExactInput) {
             if (pendingOrder.t.isMultiPath) {
                 ISwapRouter.ExactInputParams memory params = ISwapRouter.ExactInputParams({
-                    path: _encodedPath,
+                    path: pendingOrder.t.encodedPath,
                     recipient: recipient,
                     deadline: pendingOrder.t.deadline,
                     amountIn: a0e,
@@ -224,7 +220,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         } else if (_type == OrderType.ExactOutput) {
             if (pendingOrder.t.isMultiPath) {
                 ISwapRouter.ExactOutputParams memory params = ISwapRouter.ExactOutputParams({
-                    path: _encodedPath,
+                    path: pendingOrder.t.encodedPath,
                     recipient: recipient,
                     deadline: pendingOrder.t.deadline,
                     amountOut: a1m,
@@ -244,7 +240,6 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
                 });
                 router.exactOutputSingle(params);
             }
-=======
         if (tokenIn == address(0)) {
             require(gasfee[pendingOrder.t.swapper] >= _gasFee + a0e, "insufficient fee balance");
             gasfee[pendingOrder.t.swapper] -= a0e;
@@ -260,41 +255,6 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
             tokenOut = address(weth);
         }
 
-        if (_type == OrderType.ExactETHForTokens || _type == OrderType.ExactETHForTokensFot) {
-            ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
-                tokenIn: tokenIn, // should be address(weth) after conversion
-                tokenOut: tokenOut,
-                fee: 3000,
-                recipient: recipient,
-                deadline: pendingOrder.t.deadline,
-                amountIn: a0e,
-                amountOutMinimum: a1m,
-                sqrtPriceLimitX96: 0
-            });
-            router.exactInputSingle{value: a0e}(params);
-        } else if (_type == OrderType.ExactTokensForETH || _type == OrderType.ExactTokensForETHFot) {
-            ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
-                tokenIn: tokenIn,
-                tokenOut: tokenOut, // tokenOut should be address(weth) after conversion if originally ETH
-                fee: 3000,
-                recipient: recipient,
-                deadline: pendingOrder.t.deadline,
-                amountIn: a0e,
-                amountOutMinimum: a1m,
-                sqrtPriceLimitX96: 0
-            });
-            router.exactInputSingle(params);
-        } else if (_type == OrderType.ExactTokensForTokens || _type == OrderType.ExactTokensForTokensFot) {
-            ISwapRouter.ExactInputParams memory params = ISwapRouter.ExactInputParams({
-                path: abi.encodePacked(tokenIn, uint24(3000), tokenOut),
-                recipient: recipient,
-                deadline: pendingOrder.t.deadline,
-                amountIn: a0e,
-                amountOutMinimum: a1m
-            });
-            router.exactInput(params);
-        }
-
         orderbook[swapper][index].t.OrderIsExecuted = true;
         takeFeeInternal(pendingOrder.t.swapper, _gasFee);
         emit OrderExecuted(
@@ -307,6 +267,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
             pendingOrder.t.OrderIsExecuted
         );
     }
+}
 
     function takeFeeInternal(address swapper, uint256 gasFeeAmount) internal {
         //@nOrderDetailse The off-chain script retrieves the fee for this transaction, using parameters to pass how much gasFee is charged --- bOrderDetailsh web3py and web3js have the estimateGas API
@@ -329,10 +290,6 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         orderbook[msg.sender][len - 1] = orderbook[msg.sender][index];
         orderbook[msg.sender][index] = tempOrder;
         orderbook[msg.sender].pop();
-        //@todo need auto withdraw fee?
-        // if(orderbook[msg.sender].length == 0 && takeFee){
-        //     withdrawAllFee();
-        // }
 
 
         emit OrderCancelled(
