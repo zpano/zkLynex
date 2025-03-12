@@ -36,7 +36,6 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
 
     address public agent;
     ISwapRouter public router;
-    IWETH public weth;
     Groth16Verifier public verifier;
 
 
@@ -93,7 +92,6 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         agent = _agent;
 
         router = ISwapRouter(_router);
-        weth = IWETH(payable(_weth));
         verifier = Groth16Verifier(_verifier);
     }
 
@@ -172,15 +170,14 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         uint256 a0e,
         uint256 a1m,
         uint256 _gasFee,
-        OrderType _type
+        OrderType _type,
+        bytes calldata pendingOrder.t.encodedPath
     ) external payable onlyAgent {
         Order memory pendingOrder = orderbook[swapper][index];
         address recipient = pendingOrder.t.recipient;
         address tokenIn = pendingOrder.t.tokenIn;
         address tokenOut = pendingOrder.t.tokenOut;
-        //      require(path.length > 0);
-        //      require(pendingOrder.t.tokenIn == path[0].from, "tokenIn mismatch");
-        //      require(pendingOrder.t.tokenOut == path[path.length - 1].to, "tokenOut mismatch");
+
         require(pendingOrder.t.exchangeRate <= (a0e * 1 ether) / (a1m), "bad exchangeRate");
         require(!pendingOrder.t.OrderIsExecuted, "already executed");
         require(block.timestamp <= pendingOrder.t.deadline, "order expired");
@@ -192,7 +189,6 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         signals[3] = a1m;
 
         require(verifier.verifyProof(_proofA, _proofB, _proofC, signals), "Proof is not valid");
-
 
         if (_type == OrderType.ExactInput) {
             if (pendingOrder.t.isMultiPath) {
@@ -240,19 +236,6 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
                 });
                 router.exactOutputSingle(params);
             }
-        if (tokenIn == address(0)) {
-            require(gasfee[pendingOrder.t.swapper] >= _gasFee + a0e, "insufficient fee balance");
-            gasfee[pendingOrder.t.swapper] -= a0e;
-            weth.deposit{value: a0e}();
-            weth.approve(address(router), a0e);
-            tokenIn = address(weth);
-        } else {
-            IERC20(tokenIn).safeTransferFrom(swapper, address(this), a0e);
-            IERC20(tokenIn).approve(address(router), a0e);
-        }
-
-        if (tokenOut == address(0)) {
-            tokenOut = address(weth);
         }
 
         orderbook[swapper][index].t.OrderIsExecuted = true;
@@ -267,7 +250,6 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
             pendingOrder.t.OrderIsExecuted
         );
     }
-}
 
     function takeFeeInternal(address swapper, uint256 gasFeeAmount) internal {
         //@nOrderDetailse The off-chain script retrieves the fee for this transaction, using parameters to pass how much gasFee is charged --- bOrderDetailsh web3py and web3js have the estimateGas API
