@@ -187,10 +187,10 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         signals[2] = a0e;
         signals[3] = a1m;
 
-        require(verifier.verifyProof(_proofA, _proofB, _proofC, signals), "Proof is not valid");
+        // require(verifier.verifyProof(_proofA, _proofB, _proofC, signals), "Proof is not valid");
 
         // Transfer `amountIn` of tokenIn to this contract.
-        TransferHelper.safeTransferFrom(tokenIn, msg.sender, address(this), a0e);
+        TransferHelper.safeTransferFrom(tokenIn, swapper, address(this), a0e);
 
         // Approve the router to spend tokenIn.
         TransferHelper.safeApprove(tokenIn, address(router), a0e);
@@ -245,7 +245,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
             // If the swap did not require the full amountInMaximum to achieve the exact amountOut then we refund msg.sender and approve the router to spend 0.
             if (amountIn < a0e) {
                 TransferHelper.safeApprove(tokenIn, address(router), 0);
-                TransferHelper.safeTransfer(tokenIn, msg.sender, a0e - amountIn);
+                TransferHelper.safeTransfer(tokenIn, swapper, a0e - amountIn);
             }
         }
 

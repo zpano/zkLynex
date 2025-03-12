@@ -4,6 +4,10 @@ pragma solidity ^0.8.13;
 import {Test, console} from "forge-std/Test.sol";
 import "../src/ZDP-C.sol";
 
+interface ERC20mint {
+    function mint() external;
+}
+
 contract ZDPTest is Test {
     address owner = makeAddr("owner");
     address agent = makeAddr("agent");
@@ -64,6 +68,79 @@ contract ZDPTest is Test {
 
         
     }
+
+     function testSwapForward() public {
+        //------store order-------
+        vm.startPrank(swapper);
+        ZDPc.OrderDetails memory ot = ZDPc.OrderDetails({
+            swapper: swapper,
+            recipient: address(0x1234),
+            tokenIn: ETH,
+            tokenOut: BTC,//usdc
+            exchangeRate: 166e18,
+            deadline: block.timestamp + 1 weeks,
+            OrderIsExecuted: false,
+            isMultiPath: false,
+            encodedPath: new bytes(0)
+        });
+
+        Os memory os = Os({
+            a0e: 1e18,
+            a1m: 1500 * 1e6,
+            salt: keccak256("123")
+        });
+
+        bytes32 h = keccak256(abi.encode(os));
+        bytes16 HF;
+        bytes16 HE;
+        assembly{
+            HF := h
+            HE := shl(128, h)
+      }
+
+        ZDPc.Order memory order = ZDPc.Order({
+            t: ot,
+            HOsF: HF,
+            HOsE: HE
+        });
+
+
+        zdp.addPendingOrder(order);
+        
+        
+        //------deposit fee-------
+        vm.deal(swapper, 1000 ether);
+        zdp.depositForGasFee{value: 10 ether}(swapper);
+        assertEq(zdp.gasfee(swapper), 10 ether);
+
+        //-------mint token--------
+        ERC20mint(ETH).mint();
+        IERC20(ETH).approve(address(zdp), 1e18);
+        vm.stopPrank();
+
+        
+        
+        vm.stopPrank();
+
+        uint[2] memory proofA;
+        uint[2][2] memory proofB;
+        uint[2] memory proofC;
+
+        uint256[4] memory signals;
+
+        proofA = [0x28584ac2b6ed510163e2d88c95edb2588a3f946df5683c251dea919b6c4571d9, 0x227938b7f9a6d603db7ecd3b760b817cd08874eaa07f7a0a5d760153390a4aff];
+        proofB = [[0x02a8124b48e18847112e565826943e26a405410a7583e4383eb466d1103329d6, 0x233a06644a9f4bf5bccfca2fe6d4fff8cff46d17667e41aa86abc83088257719],[0x285dc5b892c7a34146c5fbf49b8be1308698fa9a96d517dc892b71797ea19a76, 0x16209b306f79bb0a5263c4957ed6236b2db98e235620240ef31486ccf0d267db]];
+        proofC = [0x184f3859a4f3377d7d1ecc87eb453f5c9dac09ddbd744c8121ea609e0ea9f37c, 0x1a8d273d8efa7c3bf7344b138cdf5abe71553ef2a70e8f7ab1c6efb1eba38650];
+        signals = [uint(0x000000000000000000000000000000008e672d8224f8243233773effeafc3dba), 0x000000000000000000000000000000000daabdd16bf8a7a9b47ee89f19a81b86, 0x0000000000000000000000000000000000000000000000000de0b6b3a7640000, 0x0000000000000000000000000000000000000000000000000000000059682f00];
+        //invalid proof
+
+        //------swap forward-------
+        vm.startPrank(agent);
+        zdp.swapForward(proofA,proofB, proofC, swapper, 0, 1e18, 1e15, 0.0075 ether, ZDPc.OrderType.ExactInput);
+        vm.stopPrank();
+        
+    }
+
 
     // function testDeposit()public{
     //     vm.deal(swapper, 1000 ether);
