@@ -160,7 +160,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
 
         emit TakenFeeWithdrawn(owner(), amount);
     }
-
+    
     function swapForward(
         uint256[2] calldata _proofA,
         uint256[2][2] calldata _proofB,
@@ -172,7 +172,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         uint256 _gasFee,
         OrderType _type,
         bytes calldata pendingOrder.t.encodedPath
-    ) external payable onlyAgent {
+    ) external onlyAgent {
         Order memory pendingOrder = orderbook[swapper][index];
         address recipient = pendingOrder.t.recipient;
         address tokenIn = pendingOrder.t.tokenIn;
@@ -187,6 +187,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         signals[1] = uint256(uint128(pendingOrder.HOsE));
         signals[2] = a0e;
         signals[3] = a1m;
+        //@todo transferfrom tokenIn
 
         require(verifier.verifyProof(_proofA, _proofB, _proofC, signals), "Proof is not valid");
 
@@ -291,6 +292,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         require(_order.t.recipient != address(0), "recipient must be non-zero address");
         require(_order.t.exchangeRate != 0, "exchangeRate must be non-zero value");
         require(_order.t.swapper == msg.sender, "only swapper can store order");
+        //@todo check path
         return true;
     }
 }
