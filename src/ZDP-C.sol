@@ -10,7 +10,6 @@ import "./interface/IWETH.sol";
 import "./zk.sol";
 
 contract ZDPc is Ownable2Step, ReentrancyGuard {
-
     using SafeERC20 for IERC20;
 
     struct OrderDetails {
@@ -18,11 +17,12 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         address recipient;
         address tokenIn;
         address tokenOut;
-        uint exchangeRate;
-        uint deadline;
+        uint256 exchangeRate;
+        uint256 deadline;
         bool OrderIsExecuted;
-        bool isMultiPath;     // Flag to indicate if this is a multi-path order
-        bytes encodedPath;    // Encoded path for multi-hop swaps
+
+        bool isMultiPath; // Flag to indicate if this is a multi-path order
+        bytes encodedPath; // Encoded path for multi-hop swaps
     }
 
     struct Order {
@@ -36,15 +36,19 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
     }
 
     address public agent;
+    ISwapRouter public router;
+    Groth16Verifier public verifier;
+
+
+    mapping(address => Order[]) public orderbook;
+    mapping(address => uint256) public gasfee;
 
     ISwapRouter public router;
     IWETH public weth;
     Groth16Verifier public verifier;
 
-    mapping(address => Order[]) public orderbook;
-    mapping(address => uint) public gasfee;
 
-    modifier onlyAgent {
+    modifier onlyAgent() {
         require(msg.sender == agent, "only agent can call this function");
         _;
     }
@@ -52,14 +56,39 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
     event AgentChanged(address indexed oldAgent, address indexed newAgent);
     event RouterChanged(address indexed oldRouter, address indexed newRouter);
     event VerifierChanged(address indexed oldVerifier, address indexed newVerifier);
-    event OrderStored(address indexed swapper,uint indexed index, address tokenIn, address tokenOut, uint  exchangeRate, uint deadline, bool OrderIsExecuted);
-    event OrderExecuted(address swapper, uint indexed index, address tokenIn, address tokenOut, uint  exchangeRate, uint deadline, bool OrderIsExecuted);
-    event OrderCancelled(address swapper, uint indexed index, address tokenIn, address tokenOut, uint  exchangeRate, uint deadline, bool OrderIsExecuted);
-    event FeeDeposit(address indexed swapper, uint indexed fee);
-    event FeeWithdrawn(address indexed swapper, uint indexed fee);
-    event FeeTaken(address indexed swapper, uint indexed fee);
-    event TakenFeeWithdrawn(address indexed owner, uint indexed fee);
-    
+
+    event OrderStored(
+        address indexed swapper,
+        uint256 indexed index,
+        address tokenIn,
+        address tokenOut,
+        uint256 exchangeRate,
+        uint256 deadline,
+        bool OrderIsExecuted
+    );
+    event OrderExecuted(
+        address swapper,
+        uint256 indexed index,
+        address tokenIn,
+        address tokenOut,
+        uint256 exchangeRate,
+        uint256 deadline,
+        bool OrderIsExecuted
+    );
+    event OrderCancelled(
+        address swapper,
+        uint256 indexed index,
+        address tokenIn,
+        address tokenOut,
+        uint256 exchangeRate,
+        uint256 deadline,
+        bool OrderIsExecuted
+    );
+    event FeeDeposit(address indexed swapper, uint256 indexed fee);
+    event FeeWithdrawn(address indexed swapper, uint256 indexed fee);
+    event FeeTaken(address indexed swapper, uint256 indexed fee);
+    event TakenFeeWithdrawn(address indexed owner, uint256 indexed fee);
+
 
     constructor(address _agent, address payable _router, address _weth, address _verifier, address _owner) Ownable(_owner){
         require(_agent != address(0));
@@ -75,9 +104,9 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
     function setAgent(address _agent) external onlyOwner {
         address oldAgent = agent;
         agent = _agent;
-        emit AgentChanged(oldAgent,_agent);
+        emit AgentChanged(oldAgent, _agent);
     }
-    
+
     function setRouter(address _router) external onlyOwner {
         address oldRouter = address(router);
         router = ISwapRouter(_router);
@@ -90,18 +119,25 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         emit VerifierChanged(oldVerifier, _verifier);
     }
 
-
     function addPendingOrder(Order memory _order) external {
         //@todo check order
         checkOrder(_order);
         require(!_order.t.OrderIsExecuted, "cannot be executed");
-        uint index = orderbook[_order.t.swapper].length;
+        uint256 index = orderbook[_order.t.swapper].length;
         orderbook[_order.t.swapper].push(_order);
 
-        emit OrderStored(msg.sender, index, _order.t.tokenIn, _order.t.tokenOut, _order.t.exchangeRate, _order.t.deadline, _order.t.OrderIsExecuted);
+        emit OrderStored(
+            msg.sender,
+            index,
+            _order.t.tokenIn,
+            _order.t.tokenOut,
+            _order.t.exchangeRate,
+            _order.t.deadline,
+            _order.t.OrderIsExecuted
+        );
     }
 
-    function depositForGasFee(address swapper) external payable{
+    function depositForGasFee(address swapper) external payable {
         require(msg.value > 0, "deposit must be non-zero value");
         require(swapper != address(0), "swapper must be non-zero address");
 
@@ -110,27 +146,27 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         emit FeeDeposit(swapper, msg.value);
     }
 
-    function withdrawGasFee(uint amount) public nonReentrant {
+    function withdrawGasFee(uint256 amount) public nonReentrant {
         require(amount > 0);
         require(gasfee[msg.sender] >= amount, "No enough fee to take");
 
         gasfee[msg.sender] -= amount;
-        (bool success, ) = msg.sender.call{value: amount}("");
+        (bool success,) = msg.sender.call{value: amount}("");
         require(success, "transfer failed");
 
         emit FeeWithdrawn(msg.sender, amount);
     }
 
     function withdrawTakenFee() external onlyOwner {
-        uint amount = gasfee[owner()];
+        uint256 amount = gasfee[owner()];
 
         gasfee[owner()] = 0;
-        (bool success, ) = owner().call{value: amount}("");
+        (bool success,) = owner().call{value: amount}("");
         require(success, "transfer failed");
 
         emit TakenFeeWithdrawn(owner(), amount);
     }
-    
+
     function swapForward(
         uint256[2] calldata _proofA,
         uint256[2][2] calldata _proofB,
@@ -146,7 +182,6 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         address recipient = pendingOrder.t.recipient;
         address tokenIn = pendingOrder.t.tokenIn;
         address tokenOut = pendingOrder.t.tokenOut;
-
         //      require(path.length > 0);
         //      require(pendingOrder.t.tokenIn == path[0].from, "tokenIn mismatch");
         //      require(pendingOrder.t.tokenOut == path[path.length - 1].to, "tokenOut mismatch");
@@ -162,6 +197,54 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
 
         require(verifier.verifyProof(_proofA, _proofB, _proofC, signals), "Proof is not valid");
 
+
+        if (_type == OrderType.ExactInput) {
+            if (pendingOrder.t.isMultiPath) {
+                ISwapRouter.ExactInputParams memory params = ISwapRouter.ExactInputParams({
+                    path: _encodedPath,
+                    recipient: recipient,
+                    deadline: pendingOrder.t.deadline,
+                    amountIn: a0e,
+                    amountOutMinimum: a1m
+                });
+                router.exactInput(params);
+            } else {
+                ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+                    tokenIn: tokenIn,
+                    tokenOut: tokenOut,
+                    fee: 3000,
+                    recipient: recipient,
+                    deadline: pendingOrder.t.deadline,
+                    amountIn: a0e,
+                    amountOutMinimum: a1m,
+                    sqrtPriceLimitX96: 0
+                });
+                router.exactInputSingle(params);
+            }
+        } else if (_type == OrderType.ExactOutput) {
+            if (pendingOrder.t.isMultiPath) {
+                ISwapRouter.ExactOutputParams memory params = ISwapRouter.ExactOutputParams({
+                    path: _encodedPath,
+                    recipient: recipient,
+                    deadline: pendingOrder.t.deadline,
+                    amountOut: a1m,
+                    amountInMaximum: a0e
+                });
+                router.exactOutput(params);
+            } else {
+                ISwapRouter.ExactOutputSingleParams memory params = ISwapRouter.ExactOutputSingleParams({
+                    tokenIn: tokenIn,
+                    tokenOut: tokenOut,
+                    fee: 3000,
+                    recipient: recipient,
+                    deadline: pendingOrder.t.deadline,
+                    amountOut: a1m,
+                    amountInMaximum: a0e,
+                    sqrtPriceLimitX96: 0
+                });
+                router.exactOutputSingle(params);
+            }
+=======
         if (tokenIn == address(0)) {
             require(gasfee[pendingOrder.t.swapper] >= _gasFee + a0e, "insufficient fee balance");
             gasfee[pendingOrder.t.swapper] -= a0e;
@@ -215,13 +298,19 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         orderbook[swapper][index].t.OrderIsExecuted = true;
         takeFeeInternal(pendingOrder.t.swapper, _gasFee);
         emit OrderExecuted(
-            pendingOrder.t.swapper, index, pendingOrder.t.tokenIn, pendingOrder.t.tokenOut, pendingOrder.t.exchangeRate, pendingOrder.t.deadline, pendingOrder.t.OrderIsExecuted
+            pendingOrder.t.swapper,
+            index,
+            pendingOrder.t.tokenIn,
+            pendingOrder.t.tokenOut,
+            pendingOrder.t.exchangeRate,
+            pendingOrder.t.deadline,
+            pendingOrder.t.OrderIsExecuted
         );
     }
 
-    function takeFeeInternal(address swapper, uint gasFeeAmount) internal {
+    function takeFeeInternal(address swapper, uint256 gasFeeAmount) internal {
         //@nOrderDetailse The off-chain script retrieves the fee for this transaction, using parameters to pass how much gasFee is charged --- bOrderDetailsh web3py and web3js have the estimateGas API
-        require(gasFeeAmount <= 0.075 ether, "gasFee is too high");//@nOrderDetailse Set an upper limit to prevent the script from being malicious
+        require(gasFeeAmount <= 0.075 ether, "gasFee is too high"); //@nOrderDetailse Set an upper limit to prevent the script from being malicious
         require(gasfee[swapper] >= gasFeeAmount, "does not have enough fee to take");
         gasfee[swapper] -= gasFeeAmount;
         gasfee[owner()] += gasFeeAmount;
@@ -230,12 +319,12 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
     }
 
 
-    function cancelOrder(uint index) external {
+    function cancelOrder(uint256 index) external {
         require(!orderbook[msg.sender][index].t.OrderIsExecuted, "already executed");
         require(orderbook[msg.sender][index].t.recipient != address(0), "recipient does not exist");
 
         Order memory tempOrder;
-        uint len = orderbook[msg.sender].length;
+        uint256 len = orderbook[msg.sender].length;
         tempOrder = orderbook[msg.sender][len - 1];
         orderbook[msg.sender][len - 1] = orderbook[msg.sender][index];
         orderbook[msg.sender][index] = tempOrder;
@@ -245,7 +334,16 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         //     withdrawAllFee();
         // }
 
-        emit OrderCancelled(msg.sender, index, tempOrder.t.tokenIn, tempOrder.t.tokenOut, tempOrder.t.exchangeRate, tempOrder.t.deadline, tempOrder.t.OrderIsExecuted);
+
+        emit OrderCancelled(
+            msg.sender,
+            index,
+            tempOrder.t.tokenIn,
+            tempOrder.t.tokenOut,
+            tempOrder.t.exchangeRate,
+            tempOrder.t.deadline,
+            tempOrder.t.OrderIsExecuted
+        );
     }
 
     function checkOrder(Order memory _order) internal view returns(bool){
@@ -256,6 +354,4 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         require(_order.t.swapper == msg.sender, "only swapper can store order");
         return true;
     }
-
 }
-
