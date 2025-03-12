@@ -6,6 +6,7 @@ import "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import "openzeppelin-contracts/contracts/access/Ownable2Step.sol";
 import "openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
 import "./interface/ISwapRouter.sol";
+import "./interface/IWETH.sol";
 import "./zk.sol";
 
 contract ZDPc is Ownable2Step, ReentrancyGuard {
@@ -19,17 +20,16 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         uint256 exchangeRate;
         uint256 deadline;
         bool OrderIsExecuted;
+
         bool isMultiPath; // Flag to indicate if this is a multi-path order
         bytes encodedPath; // Encoded path for multi-hop swaps
     }
 
     struct Order {
         OrderDetails t;
-        // bytes32 HOs;
         bytes16 HOsF;
         bytes16 HOsE;
     }
-
     enum OrderType {
         ExactInput,
         ExactOutput
@@ -39,8 +39,14 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
     ISwapRouter public router;
     Groth16Verifier public verifier;
 
+
     mapping(address => Order[]) public orderbook;
     mapping(address => uint256) public gasfee;
+
+    ISwapRouter public router;
+    IWETH public weth;
+    Groth16Verifier public verifier;
+
 
     modifier onlyAgent() {
         require(msg.sender == agent, "only agent can call this function");
@@ -50,6 +56,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
     event AgentChanged(address indexed oldAgent, address indexed newAgent);
     event RouterChanged(address indexed oldRouter, address indexed newRouter);
     event VerifierChanged(address indexed oldVerifier, address indexed newVerifier);
+
     event OrderStored(
         address indexed swapper,
         uint256 indexed index,
@@ -82,13 +89,15 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
     event FeeTaken(address indexed swapper, uint256 indexed fee);
     event TakenFeeWithdrawn(address indexed owner, uint256 indexed fee);
 
-    constructor(address _agent, address payable _router, address _verifier, address _owner) Ownable(_owner) {
+
+    constructor(address _agent, address payable _router, address _weth, address _verifier, address _owner) Ownable(_owner){
         require(_agent != address(0));
         require(_router != address(0));
         require(_verifier != address(0));
         agent = _agent;
 
         router = ISwapRouter(_router);
+        weth = IWETH(payable(_weth));
         verifier = Groth16Verifier(_verifier);
     }
 
@@ -158,7 +167,6 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         emit TakenFeeWithdrawn(owner(), amount);
     }
 
-    //TODO need to add the ETH swap
     function swapForward(
         uint256[2] calldata _proofA,
         uint256[2][2] calldata _proofB,
@@ -168,14 +176,15 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         uint256 a0e,
         uint256 a1m,
         uint256 _gasFee,
-        OrderType _type,
-        bytes calldata _encodedPath
+        OrderType _type
     ) external payable onlyAgent {
         Order memory pendingOrder = orderbook[swapper][index];
         address recipient = pendingOrder.t.recipient;
         address tokenIn = pendingOrder.t.tokenIn;
         address tokenOut = pendingOrder.t.tokenOut;
-
+        //      require(path.length > 0);
+        //      require(pendingOrder.t.tokenIn == path[0].from, "tokenIn mismatch");
+        //      require(pendingOrder.t.tokenOut == path[path.length - 1].to, "tokenOut mismatch");
         require(pendingOrder.t.exchangeRate <= (a0e * 1 ether) / (a1m), "bad exchangeRate");
         require(!pendingOrder.t.OrderIsExecuted, "already executed");
         require(block.timestamp <= pendingOrder.t.deadline, "order expired");
@@ -187,6 +196,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         signals[3] = a1m;
 
         require(verifier.verifyProof(_proofA, _proofB, _proofC, signals), "Proof is not valid");
+
 
         if (_type == OrderType.ExactInput) {
             if (pendingOrder.t.isMultiPath) {
@@ -234,6 +244,55 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
                 });
                 router.exactOutputSingle(params);
             }
+=======
+        if (tokenIn == address(0)) {
+            require(gasfee[pendingOrder.t.swapper] >= _gasFee + a0e, "insufficient fee balance");
+            gasfee[pendingOrder.t.swapper] -= a0e;
+            weth.deposit{value: a0e}();
+            weth.approve(address(router), a0e);
+            tokenIn = address(weth);
+        } else {
+            IERC20(tokenIn).safeTransferFrom(swapper, address(this), a0e);
+            IERC20(tokenIn).approve(address(router), a0e);
+        }
+
+        if (tokenOut == address(0)) {
+            tokenOut = address(weth);
+        }
+
+        if (_type == OrderType.ExactETHForTokens || _type == OrderType.ExactETHForTokensFot) {
+            ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+                tokenIn: tokenIn, // should be address(weth) after conversion
+                tokenOut: tokenOut,
+                fee: 3000,
+                recipient: recipient,
+                deadline: pendingOrder.t.deadline,
+                amountIn: a0e,
+                amountOutMinimum: a1m,
+                sqrtPriceLimitX96: 0
+            });
+            router.exactInputSingle{value: a0e}(params);
+        } else if (_type == OrderType.ExactTokensForETH || _type == OrderType.ExactTokensForETHFot) {
+            ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+                tokenIn: tokenIn,
+                tokenOut: tokenOut, // tokenOut should be address(weth) after conversion if originally ETH
+                fee: 3000,
+                recipient: recipient,
+                deadline: pendingOrder.t.deadline,
+                amountIn: a0e,
+                amountOutMinimum: a1m,
+                sqrtPriceLimitX96: 0
+            });
+            router.exactInputSingle(params);
+        } else if (_type == OrderType.ExactTokensForTokens || _type == OrderType.ExactTokensForTokensFot) {
+            ISwapRouter.ExactInputParams memory params = ISwapRouter.ExactInputParams({
+                path: abi.encodePacked(tokenIn, uint24(3000), tokenOut),
+                recipient: recipient,
+                deadline: pendingOrder.t.deadline,
+                amountIn: a0e,
+                amountOutMinimum: a1m
+            });
+            router.exactInput(params);
         }
 
         orderbook[swapper][index].t.OrderIsExecuted = true;
@@ -259,6 +318,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         emit FeeTaken(swapper, gasFeeAmount);
     }
 
+
     function cancelOrder(uint256 index) external {
         require(!orderbook[msg.sender][index].t.OrderIsExecuted, "already executed");
         require(orderbook[msg.sender][index].t.recipient != address(0), "recipient does not exist");
@@ -274,6 +334,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         //     withdrawAllFee();
         // }
 
+
         emit OrderCancelled(
             msg.sender,
             index,
@@ -285,7 +346,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         );
     }
 
-    function checkOrder(Order memory _order) internal view returns (bool) {
+    function checkOrder(Order memory _order) internal view returns(bool){
         require(block.timestamp < _order.t.deadline, "order expired");
         require(_order.t.tokenIn != _order.t.tokenOut, "tokenIn == tokenOut");
         require(_order.t.recipient != address(0), "recipient must be non-zero address");
