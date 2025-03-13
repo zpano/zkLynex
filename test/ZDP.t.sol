@@ -2,6 +2,7 @@
 pragma solidity ^0.8.13;
 
 import {Test, console} from "forge-std/Test.sol";
+import {console} from "forge-std/console.sol";
 import "../src/ZDP-C.sol";
 
 interface ERC20mint {
@@ -49,14 +50,14 @@ contract ZDPTest is Test {
             a1m: 1500 * 1e6,
             salt: keccak256("123")
         });
-
+        console.logBytes(abi.encode(os));
         bytes32 h = keccak256(abi.encode(os));
         bytes16 HF;
         bytes16 HE;
         assembly{
             HF := h
             HE := shl(128, h)
-      }
+    }
 
         ZDPc.Order memory order = ZDPc.Order({
             t: ot,
@@ -69,7 +70,7 @@ contract ZDPTest is Test {
         
     }
 
-     function testSwapForward() public {
+    function testSwapForward() public {
         //------store order-------
         vm.startPrank(swapper);
         ZDPc.OrderDetails memory ot = ZDPc.OrderDetails({
@@ -86,22 +87,23 @@ contract ZDPTest is Test {
 
         Os memory os = Os({
             a0e: 1e18,
-            a1m: 1500 * 1e6,
-            salt: keccak256("123")
+            a1m: 1500000000000000,
+            salt: keccak256("123") //keccak256(0x1234)
         });
-
         bytes32 h = keccak256(abi.encode(os));
         bytes16 HF;
         bytes16 HE;
         assembly{
             HF := h
             HE := shl(128, h)
-      }
+        }
+        console.logBytes16(HF);
+        console.logBytes16(HE);
 
         ZDPc.Order memory order = ZDPc.Order({
             t: ot,
-            HOsF: HF,
-            HOsE: HE
+            HOsF: 0x58ed6fef81098ffaf5311b5d2a881d1b,
+            HOsE: 0xf1de7e4b62c5929c57cff833cff56e77
         });
 
 
@@ -128,15 +130,15 @@ contract ZDPTest is Test {
 
         uint256[4] memory signals;
 
-        proofA = [0x28584ac2b6ed510163e2d88c95edb2588a3f946df5683c251dea919b6c4571d9, 0x227938b7f9a6d603db7ecd3b760b817cd08874eaa07f7a0a5d760153390a4aff];
-        proofB = [[0x02a8124b48e18847112e565826943e26a405410a7583e4383eb466d1103329d6, 0x233a06644a9f4bf5bccfca2fe6d4fff8cff46d17667e41aa86abc83088257719],[0x285dc5b892c7a34146c5fbf49b8be1308698fa9a96d517dc892b71797ea19a76, 0x16209b306f79bb0a5263c4957ed6236b2db98e235620240ef31486ccf0d267db]];
-        proofC = [0x184f3859a4f3377d7d1ecc87eb453f5c9dac09ddbd744c8121ea609e0ea9f37c, 0x1a8d273d8efa7c3bf7344b138cdf5abe71553ef2a70e8f7ab1c6efb1eba38650];
-        signals = [uint(0x000000000000000000000000000000008e672d8224f8243233773effeafc3dba), 0x000000000000000000000000000000000daabdd16bf8a7a9b47ee89f19a81b86, 0x0000000000000000000000000000000000000000000000000de0b6b3a7640000, 0x0000000000000000000000000000000000000000000000000000000059682f00];
+        proofA = [0x02275df15a325da0af10110f01ae0f656d969f552d4cfcc2fd32f8891f509b70, 0x164584f6e92a117543b76e7de79dcf07908b1ff3d62d7fc5442b34367d531be6];
+        proofB = [[0x213bd523cabcdb8a2e2e8160be3b9918ff3bad613afd74087c5ea4ba538b51a0, 0x28dbce86d75c085c2e6e596a4022ecb509c0a2155b9e78fbbb3c588057505de9],[0x305053af13c21ae5b411dd1fcb17fa13fb6d427cf05f70a7b32cc8c226ce278b, 0x103f13eea4daa504c268c675b101ca021f846dda5ffd1baa361517bc7f7597c0]];
+        proofC = [0x0538c60f46074a82a5365ca55e5db2e6cee2b15010bae38802fc6c422a62dab7, 0x158af614bcb92d091c196730d0e0e5c182dffda094d8289d92fd562823a20bba];
+        signals = [uint(0x0000000000000000000000000000000058ed6fef81098ffaf5311b5d2a881d1b), 0x00000000000000000000000000000000f1de7e4b62c5929c57cff833cff56e77,0x0000000000000000000000000000000000000000000000000de0b6b3a7640000,0x0000000000000000000000000000000000000000000000000005543df729c000];
         //invalid proof
 
         //------swap forward-------
         vm.startPrank(agent);
-        zdp.swapForward(proofA,proofB, proofC, swapper, 0, 1e18, 1e15, 0.0075 ether, ZDPc.OrderType.ExactInput);
+        zdp.swapForward(proofA,proofB, proofC, swapper, 0, 1e18, 1500000000000000, 0.0075 ether, ZDPc.OrderType.ExactInput);
         vm.stopPrank();
         
     }

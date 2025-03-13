@@ -187,7 +187,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         signals[2] = a0e;
         signals[3] = a1m;
 
-        // require(verifier.verifyProof(_proofA, _proofB, _proofC, signals), "Proof is not valid");
+        require(verifier.verifyProof(_proofA, _proofB, _proofC, signals), "Proof is not valid");
 
         // Transfer `amountIn` of tokenIn to this contract.
         TransferHelper.safeTransferFrom(tokenIn, swapper, address(this), a0e);
