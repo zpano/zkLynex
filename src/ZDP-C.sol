@@ -43,6 +43,8 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
 
     mapping(address => Order[]) public orderbook;
     mapping(address => uint256) public gasfee;
+    uint256 public constant MAX_ACTIVE_ORDER = 10;
+    mapping(address => uint256[]) public activeOrders;
 
     modifier onlyAgent() {
         require(msg.sender == agent, "only agent can call this function");
@@ -52,7 +54,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
     event AgentChanged(address indexed oldAgent, address indexed newAgent);
     event RouterChanged(address indexed oldRouter, address indexed newRouter);
     event VerifierChanged(address indexed oldVerifier, address indexed newVerifier);
-    event HOS(bytes16 indexed HOsF, bytes16 indexed HOsE);
+
     event OrderStored(
         address indexed swapper,
         uint256 indexed index,
@@ -60,9 +62,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         address tokenOut,
         uint256 exchangeRate,
         uint256 deadline,
-        bool OrderIsExecuted,
-        bool isMultiPath,
-        bytes encodedPath
+        bool OrderIsExecuted
     );
     event OrderExecuted(
         address swapper,
@@ -117,23 +117,13 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
 
     function addPendingOrder(Order memory _order) external {
         checkOrder(_order);
+        require(!_order.t.OrderIsExecuted, "cannot be executed");
+        // Ensure the user does not exceed the maximum active orders
+        require(activeOrders[_order.t.swapper].length < MAX_ACTIVE_ORDER, "too many active orders");
         uint256 index = orderbook[_order.t.swapper].length;
-        Order memory tempOrder = Order({
-            t:OrderDetails({
-                swapper: _order.t.swapper,
-                recipient: _order.t.recipient,
-                tokenIn: _order.t.tokenIn,
-                tokenOut: _order.t.tokenOut,
-                exchangeRate: _order.t.exchangeRate,
-                deadline: _order.t.deadline,
-                OrderIsExecuted: false,
-                isMultiPath: _order.t.isMultiPath,
-                encodedPath: _order.t.encodedPath
-            }),
-            HOsF: _order.HOsF,
-            HOsE: _order.HOsE
-        });
-        orderbook[_order.t.swapper].push(tempOrder);
+        orderbook[_order.t.swapper].push(_order);
+        // Record the index of the new order in the activeOrders mapping
+        activeOrders[_order.t.swapper].push(index);
 
         emit OrderStored(
             msg.sender,
@@ -142,11 +132,8 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
             _order.t.tokenOut,
             _order.t.exchangeRate,
             _order.t.deadline,
-            false,
-            _order.t.isMultiPath,
-            _order.t.encodedPath
+            _order.t.OrderIsExecuted
         );
-        emit HOS(_order.HOsF, _order.HOsE);
     }
 
     function depositForGasFee(address swapper) external payable {
@@ -291,29 +278,38 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
     }
 
     function cancelOrder(uint256 index) external {
-        require(!orderbook[msg.sender][index].t.OrderIsExecuted, "already executed");
-        require(orderbook[msg.sender][index].t.recipient != address(0), "recipient does not exist");
+        // Use storage so that modifications persist
+        Order storage order = orderbook[msg.sender][index];
+        require(!order.t.OrderIsExecuted, "already executed");
+        require(order.t.recipient != address(0), "recipient does not exist");
+        require(block.timestamp <= order.t.deadline, "order expired");
 
-        Order memory tempOrder;
-        uint256 len = orderbook[msg.sender].length;
-        tempOrder = orderbook[msg.sender][len - 1];
-        orderbook[msg.sender][len - 1] = orderbook[msg.sender][index];
-        orderbook[msg.sender][index] = tempOrder;
-        orderbook[msg.sender].pop();
+        // Mark the order as cancelled by setting OrderIsExecuted to true
+        order.t.OrderIsExecuted = true;
+
+        // Remove the order index from the activeOrders array
+        uint256[] storage active = activeOrders[msg.sender];
+        for (uint256 i = 0; i < active.length; i++) {
+            if (active[i] == index) {
+                active[i] = active[active.length - 1];
+                active.pop();
+                break;
+            }
+        }
 
         emit OrderCancelled(
             msg.sender,
             index,
-            tempOrder.t.tokenIn,
-            tempOrder.t.tokenOut,
-            tempOrder.t.exchangeRate,
-            tempOrder.t.deadline,
-            tempOrder.t.OrderIsExecuted
+            order.t.tokenIn,
+            order.t.tokenOut,
+            order.t.exchangeRate,
+            order.t.deadline,
+            order.t.OrderIsExecuted
         );
     }
 
     function checkOrder(Order memory _order) internal view returns (bool) {
-        require(block.timestamp < _order.t.deadline, "order expired");
+        require(block.timestamp <= _order.t.deadline, "order expired");
         require(_order.t.recipient != address(0), "recipient must be non-zero address");
         require(_order.t.exchangeRate != 0, "exchangeRate must be non-zero value");
         require(_order.t.swapper == msg.sender, "only swapper can store order");
@@ -325,8 +321,6 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
             require(_order.t.encodedPath.length == 0, "encodedPath must be zero length");
             require(_order.t.tokenIn != _order.t.tokenOut, "tokenIn and tokenOut cannot be the same");
         }
-        require(_order.HOsE != 0, "HOsE must be non-zero value");
-        require(_order.HOsF != 0, "HOsF must be non-zero value");
         return true;
     }
 
