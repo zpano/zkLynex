@@ -114,7 +114,6 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
     }
 
     function addPendingOrder(Order memory _order) external {
-        //@todo check order
         checkOrder(_order);
         require(!_order.t.OrderIsExecuted, "cannot be executed");
         uint256 index = orderbook[_order.t.swapper].length;
@@ -294,7 +293,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         );
     }
 
-    function checkOrder(Order memory _order) internal view returns(bool){
+    function checkOrder(Order memory _order) internal view returns (bool) {
         require(block.timestamp < _order.t.deadline, "order expired");
         require(_order.t.recipient != address(0), "recipient must be non-zero address");
         require(_order.t.exchangeRate != 0, "exchangeRate must be non-zero value");
@@ -308,5 +307,13 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
             require(_order.t.tokenIn != _order.t.tokenOut, "tokenIn and tokenOut cannot be the same");
         }
         return true;
+    }
+
+    function getOrders(address swapper) external view returns (Order[] memory) {
+        return orderbook[swapper];
+    }
+
+    function getOrder(address swapper, uint256 index) external view returns (Order memory) {
+        return orderbook[swapper][index];
     }
 }
