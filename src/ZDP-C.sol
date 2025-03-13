@@ -52,7 +52,7 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
     event AgentChanged(address indexed oldAgent, address indexed newAgent);
     event RouterChanged(address indexed oldRouter, address indexed newRouter);
     event VerifierChanged(address indexed oldVerifier, address indexed newVerifier);
-
+    event HOS(bytes16 indexed HOsF, bytes16 indexed HOsE);
     event OrderStored(
         address indexed swapper,
         uint256 indexed index,
@@ -60,7 +60,9 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         address tokenOut,
         uint256 exchangeRate,
         uint256 deadline,
-        bool OrderIsExecuted
+        bool OrderIsExecuted,
+        bool isMultiPath,
+        bytes encodedPath
     );
     event OrderExecuted(
         address swapper,
@@ -115,9 +117,23 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
 
     function addPendingOrder(Order memory _order) external {
         checkOrder(_order);
-        require(!_order.t.OrderIsExecuted, "cannot be executed");
         uint256 index = orderbook[_order.t.swapper].length;
-        orderbook[_order.t.swapper].push(_order);
+        Order memory tempOrder = Order({
+            t:OrderDetails({
+                swapper: _order.t.swapper,
+                recipient: _order.t.recipient,
+                tokenIn: _order.t.tokenIn,
+                tokenOut: _order.t.tokenOut,
+                exchangeRate: _order.t.exchangeRate,
+                deadline: _order.t.deadline,
+                OrderIsExecuted: false,
+                isMultiPath: _order.t.isMultiPath,
+                encodedPath: _order.t.encodedPath
+            }),
+            HOsF: _order.HOsF,
+            HOsE: _order.HOsE
+        });
+        orderbook[_order.t.swapper].push(tempOrder);
 
         emit OrderStored(
             msg.sender,
@@ -126,8 +142,11 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
             _order.t.tokenOut,
             _order.t.exchangeRate,
             _order.t.deadline,
-            _order.t.OrderIsExecuted
+            false,
+            _order.t.isMultiPath,
+            _order.t.encodedPath
         );
+        emit HOS(_order.HOsF, _order.HOsE);
     }
 
     function depositForGasFee(address swapper) external payable {
@@ -306,6 +325,8 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
             require(_order.t.encodedPath.length == 0, "encodedPath must be zero length");
             require(_order.t.tokenIn != _order.t.tokenOut, "tokenIn and tokenOut cannot be the same");
         }
+        require(_order.HOsE != 0, "HOsE must be non-zero value");
+        require(_order.HOsF != 0, "HOsF must be non-zero value");
         return true;
     }
 
