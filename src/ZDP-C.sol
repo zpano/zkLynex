@@ -62,7 +62,9 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         address tokenOut,
         uint256 exchangeRate,
         uint256 deadline,
-        bool OrderIsExecuted
+        bool OrderIsExecuted,
+        bool isMultiPath,
+        bytes encodedPath
     );
     event OrderExecuted(
         address swapper,
@@ -72,6 +74,8 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         uint256 exchangeRate,
         uint256 deadline,
         bool OrderIsExecuted
+        bool isMultiPath,
+        bytes encodedPath
     );
     event OrderCancelled(
         address swapper,
@@ -81,12 +85,15 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
         uint256 exchangeRate,
         uint256 deadline,
         bool OrderIsExecuted
+        bool isMultiPath,
+        bytes encodedPath
     );
     event FeeDeposit(address indexed swapper, uint256 indexed fee);
     event FeeWithdrawn(address indexed swapper, uint256 indexed fee);
     event FeeTaken(address indexed swapper, uint256 indexed fee);
     event TakenFeeWithdrawn(address indexed owner, uint256 indexed fee);
-
+     event HOS(bytes16 indexed HOsF, bytes16 indexed HOsE);
+ 
     constructor(address _agent, address payable _router, address _verifier, address _owner) Ownable(_owner) {
         require(_agent != address(0));
         require(_router != address(0));
@@ -117,11 +124,26 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
 
     function addPendingOrder(Order memory _order) external {
         checkOrder(_order);
-        require(!_order.t.OrderIsExecuted, "cannot be executed");
-        // Ensure the user does not exceed the maximum active orders
         require(activeOrders[_order.t.swapper].length < MAX_ACTIVE_ORDER, "too many active orders");
+        // Ensure the user does not exceed the maximum active orders
+        Order memory tempOrder = Order({
+             t:OrderDetails({
+                 swapper: _order.t.swapper,
+                 recipient: _order.t.recipient,
+                 tokenIn: _order.t.tokenIn,
+                 tokenOut: _order.t.tokenOut,
+                 exchangeRate: _order.t.exchangeRate,
+                 deadline: _order.t.deadline,
+                 OrderIsExecuted: false,
+                 isMultiPath: _order.t.isMultiPath,
+                 encodedPath: _order.t.encodedPath
+             }),
+             HOsF: _order.HOsF,
+             HOsE: _order.HOsE
+         });
+        orderbook[_order.t.swapper].push(tempOrder);
         uint256 index = orderbook[_order.t.swapper].length;
-        orderbook[_order.t.swapper].push(_order);
+        
         // Record the index of the new order in the activeOrders mapping
         activeOrders[_order.t.swapper].push(index);
 
@@ -132,7 +154,9 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
             _order.t.tokenOut,
             _order.t.exchangeRate,
             _order.t.deadline,
-            _order.t.OrderIsExecuted
+            false,
+            _order.t.isMultiPath,
+            _order.t.encodedPath
         );
     }
 
@@ -263,7 +287,9 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
             pendingOrder.t.tokenOut,
             pendingOrder.t.exchangeRate,
             pendingOrder.t.deadline,
-            pendingOrder.t.OrderIsExecuted
+            pendingOrder.t.OrderIsExecuted,
+            pendingOrder.t.isMultiPath,
+            pendingOrder.t.encodedPath
         );
     }
 
@@ -304,7 +330,9 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
             order.t.tokenOut,
             order.t.exchangeRate,
             order.t.deadline,
-            order.t.OrderIsExecuted
+            order.t.OrderIsExecuted,
+            order.t.isMultiPath,
+            order.t.encodedPath
         );
     }
 
@@ -321,6 +349,8 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
             require(_order.t.encodedPath.length == 0, "encodedPath must be zero length");
             require(_order.t.tokenIn != _order.t.tokenOut, "tokenIn and tokenOut cannot be the same");
         }
+        require(_order.HOsE != 0, "HOsE must be non-zero value");
+        require(_order.HOsF != 0, "HOsF must be non-zero value");
         return true;
     }
 
