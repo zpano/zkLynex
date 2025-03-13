@@ -88,9 +88,9 @@ contract ZDPTest is Test {
         });
 
         Os memory os = Os({
-            a0e: 1e18,
+            a0e: 1000000000000000000,
             a1m: 1500000000000000,
-            salt: keccak256("123") //keccak256(0x1234)
+            salt: 0x04e604787cbf194841e7b68d7cd28786f6c9a0a3ab9f8b0a0e87cb4387ab0107
         });
         bytes32 h = keccak256(abi.encode(os));
         bytes16 HF;
@@ -99,11 +99,9 @@ contract ZDPTest is Test {
             HF := h
             HE := shl(128, h)
         }
-        console.logBytes16(HF);
-        console.logBytes16(HE);
 
         ZDPc.Order memory order =
-            ZDPc.Order({t: ot, HOsF: 0x58ed6fef81098ffaf5311b5d2a881d1b, HOsE: 0xf1de7e4b62c5929c57cff833cff56e77});
+            ZDPc.Order({t: ot, HOsF: HF, HOsE: HE});
 
         zdp.addPendingOrder(order);
 
@@ -126,37 +124,41 @@ contract ZDPTest is Test {
         uint256[4] memory signals;
 
         proofA = [
-            0x02275df15a325da0af10110f01ae0f656d969f552d4cfcc2fd32f8891f509b70,
-            0x164584f6e92a117543b76e7de79dcf07908b1ff3d62d7fc5442b34367d531be6
+            0x04694c7ee2d7d5f486b0701867225d904b12bf64ef4d75e11c547523319d170e,
+            0x2cf83f4ddc33aa4203343c116281d8cd6f6342531dd6af7843ce344bb5a711c2
         ];
         proofB = [
             [
-                0x213bd523cabcdb8a2e2e8160be3b9918ff3bad613afd74087c5ea4ba538b51a0,
-                0x28dbce86d75c085c2e6e596a4022ecb509c0a2155b9e78fbbb3c588057505de9
+                0x2ec367aecf8fb8b6f6f10822b8f2f626aabfa621398e137f147483f658091d31,
+                0x292fceff7a700d586756d57c8f6ddf050e0497b47b9d2e7a3179b6d42425000a
             ],
             [
-                0x305053af13c21ae5b411dd1fcb17fa13fb6d427cf05f70a7b32cc8c226ce278b,
-                0x103f13eea4daa504c268c675b101ca021f846dda5ffd1baa361517bc7f7597c0
+                0x17df5f1b40fbd5004e2307095102ffe4d0ce0e2ef10fd2bd1dbe9a797bfc11e3,
+                0x169a8d10d7d826e98ff8d9166c5c627a2ea64b4f70afec635e57f87123983492
             ]
         ];
         proofC = [
-            0x0538c60f46074a82a5365ca55e5db2e6cee2b15010bae38802fc6c422a62dab7,
-            0x158af614bcb92d091c196730d0e0e5c182dffda094d8289d92fd562823a20bba
+            0x21add50213c1894a819c8c5854da0e3948a49512ed7815c793ff8772de675886,
+            0x0f681e2576f40c464c93a038bee85213baf1d149d2691aa3519589e8db53db4e
         ];
         signals = [
-            uint256(0x0000000000000000000000000000000058ed6fef81098ffaf5311b5d2a881d1b),
-            0x00000000000000000000000000000000f1de7e4b62c5929c57cff833cff56e77,
+            uint256(0x000000000000000000000000000000003b072a65d64ed9f6e5fcb05c0db08ab3),
+            0x00000000000000000000000000000000bb47b19096cbd22af098d64e5573f466,
             0x0000000000000000000000000000000000000000000000000de0b6b3a7640000,
             0x0000000000000000000000000000000000000000000000000005543df729c000
         ];
-        //invalid proof
 
         //------swap forward-------
         vm.startPrank(agent);
         zdp.swapForward(
-            proofA, proofB, proofC, swapper, 0, 1e18, 1500000000000000, 0.0075 ether, ZDPc.OrderType.ExactInput
+            proofA, proofB, proofC, swapper, 0, 1000000000000000000, 1500000000000000, 0.0075 ether, ZDPc.OrderType.ExactInput
         );
         vm.stopPrank();
+
+        assertEq(IERC20(ETH).balanceOf(swapper), 9 ether);
+        assert(IERC20(BTC).balanceOf(address(0x1234)) > 1500000000000000);
+        ZDPc.OrderDetails memory otStored = zdp.getOrder(swapper, 0).t;
+        assertEq(otStored.OrderIsExecuted, true);
     }
 
     function testSetAgent() public {
