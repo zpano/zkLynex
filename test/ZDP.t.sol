@@ -248,7 +248,6 @@ contract ZDPTest is Test {
         ZDPc.Order memory order = ZDPc.Order({t: ot, HOsF: HF, HOsE: HE});
 
         zdp.addPendingOrder(order);
-
         vm.deal(swapper, 1000 ether);
         vm.startPrank(swapper);
 
@@ -256,11 +255,14 @@ contract ZDPTest is Test {
         zdp.depositForGasFee{value: 1000 ether}(swapper);
         assertEq(zdp.gasfee(swapper), 1000 ether);
         assertEq(zdp.getOrders(swapper).length, 1);
-
+        assertEq(zdp.getActiveOrders(swapper)[0], 0);
+        assertEq(zdp.getActiveOrders(swapper).length, 1);
         //------cancel order-------
         zdp.cancelOrder(0);
 
-        assertEq(zdp.getOrders(swapper).length, 0);
+        assertEq(zdp.getOrders(swapper).length, 1);
+        assertEq(zdp.getActiveOrders(swapper).length, 0);
+
     }
 
     function testVerify() public view {

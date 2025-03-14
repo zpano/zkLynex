@@ -141,9 +141,8 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
              HOsF: _order.HOsF,
              HOsE: _order.HOsE
          });
-        orderbook[_order.t.swapper].push(tempOrder);
         uint256 index = orderbook[_order.t.swapper].length;
-        
+        orderbook[_order.t.swapper].push(tempOrder);        
         // Record the index of the new order in the activeOrders mapping
         activeOrders[_order.t.swapper].push(index);
 
