@@ -265,6 +265,13 @@ contract ZDPTest is Test {
 
     }
 
+    function testWithdrawTakenFee() public {
+        testSwapForward();
+        vm.prank(owner);
+        zdp.withdrawTakenFee();
+        assertEq(owner.balance, 0.0075 ether);
+    }
+
     function testVerify() public view {
         uint256[2] memory proofA;
         uint256[2][2] memory proofB;
