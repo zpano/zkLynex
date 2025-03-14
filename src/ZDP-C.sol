@@ -361,4 +361,8 @@ contract ZDPc is Ownable2Step, ReentrancyGuard {
     function getOrder(address swapper, uint256 index) external view returns (Order memory) {
         return orderbook[swapper][index];
     }
+
+    function getActiveOrders(address swapper) external view returns (uint256[] memory) {
+        return activeOrders[swapper];
+    }
 }
