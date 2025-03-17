@@ -5,7 +5,6 @@ import {Script, console} from "forge-std/Script.sol";
 import "../src/ZDP-C.sol";
 import "../src/zk.sol";
 
-//@dev use `forge script script/Deploy.s.sol:ZDPScript --rpc-url $RPC_URL --private-key $PRIVATE_KEY`
 contract ZDPScript is Script {
     address router = 0xE233D75Ce6f04C04610947188DEC7C55790beF3b;
     address owner = 0xE233D75Ce6f04C04610947188DEC7C55790beF3b; // Set actual owner address
